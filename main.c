@@ -8,7 +8,7 @@
 * the server.
 *
 * To test start the program and issue a DNS request:
-*  dig @127.0.0.1 -p 9000 foo.bar.com 
+*  dig @127.0.0.1 -p 53 foo.bar.com 
 */
 
 // TODO 中继、查表
@@ -314,6 +314,7 @@ void encode_domain_name(uint8_t **buffer, const char *domain)
 void decode_header(struct Message *msg, const uint8_t **buffer)
 {
     msg->id = get16bits(buffer);
+    printf("get msg->id = %d\n", msg->id);
 
     uint32_t fields = get16bits(buffer);
     msg->qr = (fields & QR_MASK) >> 15;
@@ -346,29 +347,40 @@ void encode_header(struct Message *msg, uint8_t **buffer)
     put16bits(buffer, msg->arCount);
 }
 
-int decode_resource_records(struct ResourceRecord *rr, const uint8_t *buffer)
+int decode_resource_records(struct ResourceRecord *rr, const uint8_t **buffer)
 {
-
-    rr->name = decode_domain_name(&buffer);
-    rr->type = get16bits(&buffer);
-    rr->class = get16bits(&buffer);
-    rr->ttl = get32bits(&buffer);
-    rr->rd_length = get16bits(&buffer);
+    // 
+    if ((unsigned char)**buffer == 0xc0) /* The name field is pointer */ {
+        *buffer += 2;
+        rr->name = "TODO";
+    }
+    else /* The name field is Url */
+    { // TODO s
+        // while (*buffer > 0)
+        //     buffer += (*buffer) + 1;
+        // ++buffer;
+        rr->name = decode_domain_name(buffer);
+    }
+    printf("decode_resource_records: rr->name = %ds\n", rr->name);
+    rr->type = get16bits(buffer);
+    rr->class = get16bits(buffer);
+    rr->ttl = get32bits(buffer);
+    rr->rd_length = get16bits(buffer);
 
     switch (rr->type)
     {
     case A_Resource_RecordType:
         for (int i = 0; i < 4; ++i)
-            rr->rd_data.a_record.addr[i] = get8bits(&buffer);
+            rr->rd_data.a_record.addr[i] = get8bits(buffer);
         break;
     case AAAA_Resource_RecordType:
         for (int i = 0; i < 16; ++i)
-            rr->rd_data.aaaa_record.addr[i] = get8bits(&buffer);
+            rr->rd_data.aaaa_record.addr[i] = get8bits(buffer);
         break;
     case TXT_Resource_RecordType:
-        rr->rd_data.txt_record.txt_data_len = get8bits(&buffer);
+        rr->rd_data.txt_record.txt_data_len = get8bits(buffer);
         for (int i = 0; i < rr->rd_data.txt_record.txt_data_len; i++)
-            rr->rd_data.txt_record.txt_data[i] = get8bits(&buffer);
+            rr->rd_data.txt_record.txt_data[i] = get8bits(buffer);
         break;
     default:
         fprintf(stderr, "Unknown type %u. => Ignore resource record.\n", rr->type);
@@ -406,7 +418,7 @@ int decode_msg(struct Message *msg, const uint8_t *buffer, int size)
     for (uint16_t i = 0; i < msg->anCount; ++i)
     {
         struct ResourceRecord *rr = malloc(sizeof(struct ResourceRecord));
-        decode_resource_records(rr, buffer);
+        decode_resource_records(rr, &buffer);
         // 添加到链表前端
         rr->next = msg->answers;
         msg->answers = rr;
@@ -602,6 +614,7 @@ uint16_t newId(uint16_t clientId, struct sockaddr_in clientAddr)
         }
         break;
     }
+    printf("%d => %d", clientId, i);
     return i;
 }
 
@@ -609,7 +622,7 @@ uint16_t newId(uint16_t clientId, struct sockaddr_in clientAddr)
 void free_resource_records(struct ResourceRecord *rr)
 {
     struct ResourceRecord *next;
-
+    // printf("free_resource_records\n");
     while (rr)
     {
         free(rr->name);
@@ -704,9 +717,27 @@ void receiveFromPublic()
 
     // ID映射
     uint16_t nId = msg.id;
+    // put16bits(&buffer, IdTable[nId].clientId);
+    IdTable[nId].clientId = htons(IdTable[nId].clientId);
     memcpy(buffer, &IdTable[nId].clientId, sizeof(uint16_t));
+
+    // printf("nId = %d, clientId = %d\n", nId, IdTable[nId].clientId);
+    struct sockaddr_in ca = IdTable[nId].clientAddr;
+    // test
+    free_questions(msg.questions);
+
+    // free_resource_records(msg.answers);
+
+    // free_resource_records(msg.authorities);
+
+    // free_resource_records(msg.additionals);
+    memset(&msg, 0, sizeof(struct Message));
+    decode_msg(&msg, buffer, nbytes);
+    print_query(&msg);
+
+
     IdTable[nId].expireTime = 0; // 响应完毕后立即过期
-    sendto(clientSock, buffer, nbytes, 0, (struct sockaddr *)&clientAddr, sizeof(clientAddr));
+    sendto(clientSock, buffer, nbytes, 0, (struct sockaddr *)&ca, sizeof(ca));
 
     // 存储到cache
     const char *domain_name = msg.answers->name;
@@ -715,8 +746,8 @@ void receiveFromPublic()
 
     free_questions(msg.questions);
     free_resource_records(msg.answers);
-    free_resource_records(msg.authorities);
-    free_resource_records(msg.additionals);
+    // free_resource_records(msg.authorities);
+    // free_resource_records(msg.additionals);
 }
 
 

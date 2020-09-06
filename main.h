@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <WinSock2.h>
+#include <windows.h>
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #define PORT 53
@@ -204,7 +205,7 @@ struct Message
 };
 
 typedef struct {
-    uint8_t clientId;
+    uint16_t clientId;
     int expireTime; // 传输完也将expireTime设为0
     struct sockaddr_in clientAddr;
 } IdConversion;
