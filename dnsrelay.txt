@@ -1,0 +1,4 @@
+0.0.0.0 www.baidu.com
+0.0.0.0 www.4399.com
+111.111.111.111 www.bupt.edu.cn
+203.107.46.212 www.shimo.im
