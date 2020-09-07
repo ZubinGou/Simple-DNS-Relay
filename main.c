@@ -232,8 +232,7 @@ void updateCache(unsigned char ipAddr[4], char domain[])
 bool findInCache(unsigned char ipAddr[4], const char domain[])
 {
 
-    // int num = findNode(cacheTrie,domain);
-    int num = 0;
+    int num = findNode(cacheTrie,domain);
     printf("findInCache num = %d\n", num);
 
     if (num == 0) //domain name does not exist in the cache
@@ -247,8 +246,7 @@ bool findInCache(unsigned char ipAddr[4], const char domain[])
 
 bool findInTable(unsigned char ipAddr[4], const char domain[])
 {
-    // int num = findNode(tableTrie,domain);
-    int num = 13;
+    int num = findNode(tableTrie,domain);
     if (num == 0)
     {
         return false;
@@ -622,23 +620,13 @@ void encode_header(struct Message *msg, uint8_t **buffer)
 
 int decode_resource_records(struct ResourceRecord *rr, const uint8_t **buffer, const uint8_t *oriBuffer)
 {
-    // const uint8_t *baseAddr = oriBuffer;
-    printf("==decode_resource_records\n");
-    printf("%x\n", buffer);
-    printf("%x\n", oriBuffer);
-
     rr->name = decode_domain_name(buffer, *buffer - oriBuffer);
-
-    // printf("begin");
-    // print_hex(*buffer, 200);
 
     rr->type = get16bits(buffer);
     rr->class = get16bits(buffer);
     rr->ttl = get32bits(buffer);
     rr->rd_length = get16bits(buffer);
 
-    printf(" decode_resource_records then:\n");
-    print_hex(*buffer, 200);
     switch (rr->type)
     {
     case A_Resource_RecordType:
@@ -726,6 +714,7 @@ int decode_msg(struct Message *msg, const uint8_t *buffer, int size)
 
 // For every question in the message add a appropiate resource record
 // in either section 'answers', 'authorities' or 'additionals'.
+// 返回-1代表本地找不到
 int resolver_process(struct Message *msg)
 {
     // struct ResourceRecord *beg;
@@ -763,30 +752,7 @@ int resolver_process(struct Message *msg)
         {
         case A_Resource_RecordType:
             rr->rd_length = 4;
-            uint8_t tempAddr[4];
-            // rc = get_A_Record(tempAddr, q->qName);
-
-            char *qn;
-            // = q->qName;
-            // for (int i = 0; i < 4; i ++) {
-            //     printf("%d ", tempAddr[i]);
-            // }
-            // rr->rd_data.a_record.addr = tempAddr;
-
-            rc = get_A_Record(rr->rd_data.a_record.addr, qn);
-            printf("sizeof(qn): %d\n", strlen(qn));
-            printf("%s\n", qn);
-            // for (int i = 0; qn[i] != "\0"; i++) {
-            //     q->qName[i] = qn[i];
-            // }
-            print_resource_record(rr);
-
-            for (int i = 0; i < 4; i++)
-                if (i != 3)
-                    printf("%u.", rr->rd_data.a_record.addr[i]);
-                else
-                    printf("%u", rr->rd_data.a_record.addr[i]);
-            printf("\n");
+            rc = get_A_Record(rr->rd_data.a_record.addr, q->qName);
             break;
             // case AAAA_Resource_RecordType:
             //     rr->rd_length = 16;
@@ -1121,7 +1087,10 @@ int main()
     clientSock = socket(AF_INET, SOCK_DGRAM, 0);
     serverSock = socket(AF_INET, SOCK_DGRAM, 0);
 
-    // TODO 非阻塞
+    int non_block = 1;
+    ioctlsocket(clientSock, FIONBIO, (u_long FAR *)&non_block);
+    ioctlsocket(serverSock, FIONBIO, (u_long FAR *)&non_block);
+
     memset(&clientAddr, 0, sizeof(clientAddr));
     clientAddr.sin_family = AF_INET;
     clientAddr.sin_addr.s_addr = INADDR_ANY;
@@ -1151,7 +1120,6 @@ int main()
         receiveFromLocal();
         printf("\n-------2 receiveFromPublic-------\n");
         receiveFromPublic();
-        // Sleep(1);
     }
 
     closesocket(clientSock);

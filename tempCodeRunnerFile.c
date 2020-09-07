@@ -1,2 +1,1 @@
-== 0: \n");
-            // print_resource_record(rr);
+decode_resource_records
