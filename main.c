@@ -30,17 +30,19 @@ void simplifyName(char* str)
 void insertNode(struct Trie* trie , char* str ,unsigned char ip[4])
 {
     if(str[0]=='\0')return;
-    simplifyName(str);
-    int len = strlen(str);
+    char ss[300] = {0};
+    memcpy(ss,str,sizeof(ss));
+    simplifyName(ss);
+    int len = strlen(ss);
     int root = 0;
     for(int i = 0 ; i < len ; i++)
     {
         int id;
-        if(str[i]>='0'&&str[i]<='9')
-            id = 26 + str[i] - '0';
-        else if(str[i]>='a'&&str[i]<='z')
-            id = str[i]-'a';
-        else if(str[i] == '-')
+        if(ss[i]>='0'&&ss[i]<='9')
+            id = 26 + ss[i] - '0';
+        else if(ss[i]>='a'&&ss[i]<='z')
+            id = ss[i]-'a';
+        else if(ss[i] == '-')
             id = 36;
         else
             id = 37;
@@ -67,8 +69,10 @@ void insertNode(struct Trie* trie , char* str ,unsigned char ip[4])
 int findNode(struct Trie* trie ,char* str)
 {
     if(str[0]=='\0')return 0;
-    simplifyName(str);
-    int len = strlen(str);
+    char ss[300] = {0};
+    memcpy(ss,str,sizeof(ss));
+    simplifyName(ss);
+    int len = strlen(ss);
     int root = 0 ;
     for(int i = 0 ; i< len ; i++)
     {
@@ -80,11 +84,11 @@ int findNode(struct Trie* trie ,char* str)
          * '-'     -> 36
          * '.'     -> 37
         */
-        if(str[i]>='0'&&str[i]<='9')
-            id = 26 + str[i] - '0';
-        else if(str[i]>='a'&&str[i]<='z')
-            id = str[i]-'a';
-        else if(str[i] == '-')
+        if(ss[i]>='0'&&ss[i]<='9')
+            id = 26 + ss[i] - '0';
+        else if(ss[i]>='a'&&ss[i]<='z')
+            id = ss[i]-'a';
+        else if(ss[i] == '-')
             id = 36;
         else
             id = 37;
@@ -105,19 +109,21 @@ int findNode(struct Trie* trie ,char* str)
 void deleteNode(struct Trie* trie ,char* str)
 {
     if(str[0]=='\0')return;
-    simplifyName(str);
-    int root = findNode(trie,str);
+    char ss[300] = {0};
+    memcpy(ss,str,sizeof(ss));
+    simplifyName(ss);
+    int root = findNode(trie,ss);
     if(!root)return;
     trie->endFlag[root] = false;
     //删除节点
-    int strNum = strlen(str)-1;
+    int strNum = strlen(ss)-1;
     while(root!=0){
         int id;
-        if(str[strNum]>='0'&&str[strNum]<='9')
-            id = 26 + str[strNum] - '0';
-        else if(str[strNum]>='a'&&str[strNum]<='z')
-            id = str[strNum]-'a';
-        else if(str[strNum] == '-')
+        if(ss[strNum]>='0'&&ss[strNum]<='9')
+            id = 26 + ss[strNum] - '0';
+        else if(ss[strNum]>='a'&&ss[strNum]<='z')
+            id = ss[strNum]-'a';
+        else if(ss[strNum] == '-')
             id = 36;
         else
             id = 37;
@@ -230,7 +236,11 @@ bool findInCache(unsigned char ipAddr[4], const char domain[])
     {
         return false;
     }
-    memcpy(ipAddr,cacheTrie->toIp[num],sizeof(unsigned char)*4);
+    //memcpy(ipAddr,cacheTrie->toIp[num],sizeof(unsigned char)*4);
+    for(int i = 0 ;i < 4; i++)
+    {
+        ipAddr[i] = cacheTrie->toIp[num][i];
+    }
     updateCache(ipAddr,domain);
     return true;
 }
@@ -242,29 +252,34 @@ bool findInTable(unsigned char ipAddr[4], const char domain[])
     {
         return false;
     }
-    memcpy(ipAddr,tableTrie->toIp[num],sizeof(unsigned char)*4);
+    //memcpy(ipAddr,tableTrie->toIp[num],sizeof(unsigned char)*4);
+    for(int i = 0 ;i < 4; i++)
+    {
+        ipAddr[i] = cacheTrie->toIp[num][i];
+    }
     printf("findInTable num = %d\n", num);
     return true;
 }
 // void print_resource_record(struct ResourceRecord *rr);
-int get_A_Record(uint8_t addr[4], const char domain_name[], struct ResourceRecord* rr)
+int get_A_Record(uint8_t addr[4], const char domain_name[], struct ResourceRecord rr)
 {
     printf("myrr1:\n");
-    print_resource_record(rr);
-    if (findInCache(rr->rd_data.a_record.addr, domain_name))
+    print_resource_record(&rr);
+    if (findInCache(rr.rd_data.a_record.addr, domain_name))
     { // 在缓存中找到，则使用缓存中的ip地址
         return 0;
     }
-    if (findInTable(rr->rd_data.a_record.addr, domain_name))
+    if (findInTable(rr.rd_data.a_record.addr, domain_name))
     { // 在对照表中找到，则使用对照表中的ip地址
-        // printf("myrr2   :\n");
-        // print_resource_record(rr);
-        // for(int i = 0 ; i < 4; i++)
-        // if(i!=3)
-        //     printf("%u.",addr[i]);
-        // else
-        //     printf("%u",addr[i]);
-        // printf("\n");
+        printf("myrr2   :\n");
+        printf("rr->name = %s",rr.name);
+        print_resource_record(&rr);
+        for(int i = 0 ; i < 4; i++)
+        if(i!=3)
+            printf("%u.",addr[i]);
+        else
+            printf("%u",addr[i]);
+        printf("\n");
         return 0;
     }
     return -1;
@@ -763,7 +778,7 @@ int resolver_process(struct Message *msg)
         {
         case A_Resource_RecordType:
             rr->rd_length = 4;
-            rc = get_A_Record(rr->rd_data.a_record.addr, q->qName, rr);
+            rc = get_A_Record(rr->rd_data.a_record.addr, q->qName, *rr);
 
             // printf("A type rc = %d:\n", rc);
             // print_resource_record(rr);
