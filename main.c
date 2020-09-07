@@ -1,4 +1,5 @@
 #include "main.h"
+#include "head.h"
 
 /*
 * This software is licensed under the CC0.
@@ -13,20 +14,6 @@
 
 // TODO 中继、查表
 // domain_name => addr
-
-bool findInCache(uint8_t addr[4], const char domain_name[])
-{
-    return false;
-}
-
-bool findInTable(uint8_t addr[4], const char domain_name[])
-{
-    return false;
-}
-
-void addToCache(uint8_t addr[4], const char domain_name[])
-{
-}
 
 int get_A_Record(uint8_t addr[4], const char domain_name[])
 {
@@ -91,7 +78,11 @@ void print_hex(const uint8_t *buf, size_t len)
     int i;
     printf("%zu bytes:\n", len);
     for (i = 0; i < len; ++i)
+    {
         printf("%02x ", buf[i]);
+        if ((i % 16) == 15)
+            printf("\n");
+    }
     printf("\n");
 }
 
@@ -123,7 +114,7 @@ void print_resource_record(struct ResourceRecord *rr)
                    rd->name_server_record.name);
             break;
         case CNAME_Resource_RecordType:
-            printf("Canonical Name Resource Record { name %u }",
+            printf("Canonical Name Resource Record { name %s }",
                    rd->cname_record.name);
             break;
         case SOA_Resource_RecordType:
@@ -247,84 +238,75 @@ void put32bits(uint8_t **buffer, uint32_t value)
 /*
 * Deconding/Encoding functions.
 */
-
-// 3foo3bar3com0 => foo.bar.com
-// char *decode_domain_name(const uint8_t **buffer)
-// {
-//     char name[256];
-//     const uint8_t *buf = *buffer;
-//     int j = 0;
-//     int i = 0;
-
-//     while (buf[i] != 0)
-//     {
-//         if (i != 0)
-//         {
-//             name[j] = '.';
-//             j += 1;
-//         }
-//         if (buf[i] == 0xc0) {
-//             decode_domain_name()
-//         }
-//         else {
-//             int len = buf[i]; // 字符长度
-//             i += 1;
-
-//             memcpy(name + j, buf + i, len);
-//             i += len;
-//             j += len;
-//         }
-//     }
-
-//     name[j] = '\0';
-//     *buffer += i + 1; //also jump over the last 0
-//     return strdup(name);
-// }
-
-char *decode_domain_name(const uint8_t **oribuffer, int offset)
+char *decode_domain_name(const uint8_t **buffer, int offset)
 {
-    char name[256];
-    const uint8_t *buf = *oribuffer + offset; // 域名开始
-    int j = 0;
-    int i = 0;
+    printf("decode_domain_name:\n");
+    print_hex(*buffer, 50);
 
-    const uint8_t **base = oribuffer;
-    while (buf[i] != 0)
-    {
+    char name[256];
+    const uint8_t *buf = *buffer;   
+    int i = 0;
+    int j = 0;
+
+    if (buf[0] == 0xc0)
+    { // 1. 指针类型
+        const uint8_t *nameAddr = *buffer - offset + buf[1];
+        *buffer += 2;
+        return decode_domain_name(&nameAddr, buf[1]);
+    }
+    
+    while (buf[i] != 0 && buf[i] != 0xc0)
+    { // 地址部分
         if (i != 0)
         {
             name[j] = '.';
-            j += 1;
+            j++;
         }
-        if (buf[i] == 0xc0) {
-            i++;
-            char * tempName = decode_domain_name(base, buf[i]);
-            i++;
-            for (int k = 0; tempName[k] != '\0'; k++) {
-                name[j] = tempName[k];
-                j++;
-            }
-            // memcpy(name + j, tempName, sizeof(tempName) + 1);
-            printf("j=%d, tempName = %s, size=%d\n", j, tempName, sizeof(tempName));
-            // j += sizeof(tempName) + 1;
-            printf("then Name = %s\n", name);
-        }
-        else {
-            int len = buf[i]; // 字符长度
-            i += 1;
+        int len = buf[i];
+        i += 1;
 
-            memcpy(name + j, buf + i, len);
-            i += len;
+        memcpy(name + j, buf + i, len);
+        i += len;
+        j += len;
+    }
+    if (buf[i] == 0x00)
+    { // 2. 纯地址类型
+        i++;
+    }
+    else if (buf[i] == 0xc0)
+    { // 3. 地址 + 指针
+        i++;
+        buf = *buffer - offset + buf[i]; // 指针指向地址
+        printf("%x\n", *buffer);
+        printf("offset = %d\n", offset);
+        printf("buf[i] = %d\n", buf[i]);
+        printf("buf=\n");
+        print_hex(buf, 50);
+
+        int k = 0;
+        while (buf[k] != 0)
+        { // 数字部分
+            name[j] = '.';
+            j++;
+            int len = buf[k];
+            k++;
+
+            memcpy(name + j, buf + k, len);
+            k += len;
             j += len;
         }
+        i++;
     }
-
+    else
+    {
+        printf("error\n");
+    }
+    *buffer += i;
     name[j] = '\0';
-    *oribuffer += i + 1; //also jump over the last 0
-    printf("get decode name ==== %s\n", name);
+    // *oribuffer += i + 1; //also jump over the last 0
+    printf("get decode name: %s\n\n", name);
     return strdup(name);
 }
-
 
 // foo.bar.com => 3foo3bar3com0
 void encode_domain_name(uint8_t **buffer, const char *domain)
@@ -396,44 +378,24 @@ void encode_header(struct Message *msg, uint8_t **buffer)
 
 int decode_resource_records(struct ResourceRecord *rr, const uint8_t **buffer, const uint8_t *oriBuffer)
 {
-    printf("\ndecode_resource_records\n");
+    // const uint8_t *baseAddr = oriBuffer;
+    printf("==decode_resource_records\n");
+    printf("%x\n", buffer);
+    printf("%x\n", oriBuffer);
 
-    const uint8_t *baseAddr = oriBuffer;
-    printf("*buffer: %p\n", *buffer);
-    printf("*Oribuffer: %p\n", oriBuffer);
+    rr->name = decode_domain_name(buffer, *buffer - oriBuffer);
 
-    print_hex(*buffer, 20);
-    rr->name = decode_domain_name(&oriBuffer, *buffer - oriBuffer);
+    // printf("begin");
+    // print_hex(*buffer, 200);
 
-    // if ((unsigned char)**buffer == 0xc0) /* The name field is pointer */ {
-    //     *buffer += 1;
-    //     // rr->name = "TODO";
 
-    //     // printf("oriBuffer = %p\n",  oriBuffer);
-    //     // print_hex(oriBuffer, 20);
-
-    //     rr->name = decode_domain_name(&oriBuffer, **buffer); // 偏移量
-    //     printf("decode_resource_records: rr->name = %s\n", rr->name);
-    //     *buffer += 1;
-    // }
-    // else /* The name field is Url */
-    // {
-    //     // while (*(*buffer) > 0)
-    //     //     *buffer += (*(*buffer)) + 1;
-    //     // ++(*buffer);
-
-    //     print_hex(*buffer, 20);
-
-    //     printf("offset: %d", (int)(*buffer - *oriBuffer));
-    //     rr->name = decode_domain_name(&oriBuffer, *buffer - *oriBuffer);
-    //     // rr->name = "hhh";
-    //     printf("decode_resource_records: rr->name = %s\n", rr->name);
-    // }
     rr->type = get16bits(buffer);
     rr->class = get16bits(buffer);
     rr->ttl = get32bits(buffer);
     rr->rd_length = get16bits(buffer);
 
+    printf(" decode_resource_records then:\n");
+    print_hex(*buffer, 200);
     switch (rr->type)
     {
     case A_Resource_RecordType:
@@ -449,9 +411,11 @@ int decode_resource_records(struct ResourceRecord *rr, const uint8_t **buffer, c
         for (int i = 0; i < rr->rd_data.txt_record.txt_data_len; i++)
             rr->rd_data.txt_record.txt_data[i] = get8bits(buffer);
         break;
+    case CNAME_Resource_RecordType:
+        rr->rd_data.cname_record.name = decode_domain_name(buffer, *buffer - oriBuffer);
     default:
         fprintf(stderr, "Unknown type %u. => Ignore resource record.\n", rr->type);
-        return 1;
+        return -1;
     }
     return 0;
 }
@@ -461,18 +425,19 @@ int decode_msg(struct Message *msg, const uint8_t *buffer, int size)
     const uint8_t *oriBuffer = buffer;
 
     decode_header(msg, &buffer);
-    // if (msg->anCount != 0 || msg->nsCount != 0)
-    // {
-    //     printf("Only questions expected!\n");
-    //     return -1;
-    // }
+
+    // printf("decode header: ");
+    // print_hex(buffer, 200);
+    printf("0: %x\n", buffer);
+    printf("0: %x\n", oriBuffer);
 
     // 解析Question
     for (uint16_t i = 0; i < msg->qdCount; ++i)
     {
         struct Question *q = malloc(sizeof(struct Question));
 
-        q->qName = decode_domain_name(&buffer, 0);
+        q->qName = decode_domain_name(&buffer, buffer - oriBuffer);
+
         q->qType = get16bits(&buffer);
         q->qClass = get16bits(&buffer);
 
@@ -486,6 +451,8 @@ int decode_msg(struct Message *msg, const uint8_t *buffer, int size)
     {
         struct ResourceRecord *rr = malloc(sizeof(struct ResourceRecord));
         decode_resource_records(rr, &buffer, oriBuffer);
+        // if (decode_resource_records(rr, &buffer, oriBuffer) == -1)
+        // return -1;
         // 添加到链表前端
         rr->next = msg->answers;
         msg->answers = rr;
@@ -681,7 +648,7 @@ uint16_t newId(uint16_t clientId, struct sockaddr_in clientAddr)
         }
         break;
     }
-    printf("%d => %d", clientId, i);
+    printf("%d => %d\n", clientId, i);
     return i;
 }
 
@@ -691,7 +658,7 @@ void free_resource_records(struct ResourceRecord *rr)
     struct ResourceRecord *next;
     while (rr)
     {
-    printf("free_resource_records\n");
+        printf("free_resource_records\n");
         free(rr->name);
         next = rr->next;
         free(rr);
@@ -740,7 +707,6 @@ void free_questions(struct Question *qq)
 //     }
 // }
 
-
 void receiveFromLocal()
 { // 客户端请求：
     int nbytes = -1;
@@ -771,10 +737,12 @@ void receiveFromLocal()
     else
     { // 否则，将请求修改ID后转发
         uint16_t nId = newId(clientId, clientAddr);
-        if (nId == ID_TABLE_SIZE) {
+        if (nId == ID_TABLE_SIZE)
+        {
             printf("ID Table if Full\n");
         }
-        else {
+        else
+        {
             memcpy(buffer, &nId, sizeof(uint16_t));
             nbytes = sendto(serverSock, buffer, nbytes, 0, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
         }
@@ -819,7 +787,7 @@ void receiveFromPublic()
     // 存储到cache
     const char *domain_name = msg.answers->name;
     uint8_t *addr = msg.answers->rd_data.a_record.addr;
-    addToCache(addr, domain_name);
+    updateCache(addr, domain_name);
     if (msg.qdCount)
         free_questions(msg.questions);
     printf("hr1\n");
@@ -834,7 +802,8 @@ void receiveFromPublic()
 int main()
 {
     // 初始化ID转换表
-    for (int i = 0; i < ID_TABLE_SIZE; i++) {
+    for (int i = 0; i < ID_TABLE_SIZE; i++)
+    {
         IdTable[i].clientId = 0;
         IdTable[i].expireTime = 0;
         memset(&(IdTable[i].clientAddr), 0, sizeof(struct sockaddr_in));
@@ -873,9 +842,9 @@ int main()
 
     while (1)
     {
-        printf("\n1 receiveFromLocal\n");
+        printf("\n-------1 receiveFromLocal-------\n");
         receiveFromLocal();
-        printf("\n2 receiveFromPublic\n");
+        printf("\n-------2 receiveFromPublic-------\n");
         receiveFromPublic();
         // Sleep(1);
     }

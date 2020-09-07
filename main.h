@@ -136,7 +136,7 @@ union ResourceData
     } name_server_record;
     struct
     {
-        char name;
+        char *name;
     } cname_record;
     struct
     {
