@@ -2,27 +2,269 @@
 #include "head.h"
 
 /*
-* This software is licensed under the CC0.
-*
-* This is a _basic_ DNS Server for educational use.
-* It does not prevent invalid packets from crashing
-* the server.
-*
-* To test start the program and issue a DNS request:
-*  dig @127.0.0.1 -p 53 foo.bar.com 
+*simplify domain name
 */
-
-// TODO 中继、查表
-// domain_name => addr
-
-int get_A_Record(uint8_t addr[4], const char domain_name[])
+void simplifyName(char* str)
 {
-    if (findInCache(addr, domain_name))
+    int len = strlen(str);
+    char ss[255];
+    int ssLen = 0;
+    for(int i = 0 ; i < len ; i++)
+    {
+//        if(str[i]=='.')
+//            continue;
+        ss[ssLen++] = str[i];
+    }
+    ss[ssLen] = '\0';
+    char*sss = strlwr(ss);
+    memcpy(str,sss,sizeof(ss));
+}
+
+/*
+ * use to insert a word in trie
+ * parameter@trie the address of a trie
+ * parameter@str domain name
+ * parameter@ip  ipAddr
+ * eg:insertNode(trie,"www.baidu.com","10.3.8.211");
+*/
+void insertNode(struct Trie* trie , char* str ,unsigned char ip[4])
+{
+    if(str[0]=='\0')return;
+    simplifyName(str);
+    int len = strlen(str);
+    int root = 0;
+    for(int i = 0 ; i < len ; i++)
+    {
+        int id;
+        if(str[i]>='0'&&str[i]<='9')
+            id = 26 + str[i] - '0';
+        else if(str[i]>='a'&&str[i]<='z')
+            id = str[i]-'a';
+        else if(str[i] == '-')
+            id = 36;
+        else
+            id = 37;
+
+        if(!trie->tree[root][id])
+            trie->tree[root][id] = ++trie->totalNode;
+        trie->pre[trie->tree[root][id]] = root;
+        root = trie->tree[root][id];
+    }
+
+    memcpy(trie->toIp[root],ip,sizeof(unsigned char)*4);
+    trie->endFlag[root] = true;
+}
+
+/*
+ * use to find a word in trie
+ * parameter@trie the address of a trie
+ * parameter@str domain name
+ * return@if domain name exists in the trie,return the nodeNum of the ipAddr of this domain name.
+ *        else return 0
+ * eg:int nodeNum = findNode(trie,"www.baidu.com");
+ *    toIp[nodeNum] is the ipAddr
+*/
+int findNode(struct Trie* trie ,char* str)
+{
+    if(str[0]=='\0')return 0;
+    simplifyName(str);
+    int len = strlen(str);
+    int root = 0 ;
+    for(int i = 0 ; i< len ; i++)
+    {
+        int id;
+        /*
+         * id
+         * 'a'~'z' -> 0:25
+         * '0'~'9' -> 26:35
+         * '-'     -> 36
+         * '.'     -> 37
+        */
+        if(str[i]>='0'&&str[i]<='9')
+            id = 26 + str[i] - '0';
+        else if(str[i]>='a'&&str[i]<='z')
+            id = str[i]-'a';
+        else if(str[i] == '-')
+            id = 36;
+        else
+            id = 37;
+
+        if(!trie->tree[root][id])return 0;
+        root = trie->tree[root][id];
+    }
+    if(trie->endFlag[root]==false)return 0;
+    return root;
+}
+
+/*
+ * use to delete a word in trie
+ * parameter@trie the address of a trie
+ * parameter@str the domain name
+ * eg: deleteNode(trie,"www.baidu.com");
+*/
+void deleteNode(struct Trie* trie ,char* str)
+{
+    if(str[0]=='\0')return;
+    simplifyName(str);
+    int root = findNode(trie,str);
+    if(!root)return;
+    trie->endFlag[root] = false;
+    //删除节点
+    int strNum = strlen(str)-1;
+    while(root!=0){
+        int id;
+        if(str[strNum]>='0'&&str[strNum]<='9')
+            id = 26 + str[strNum] - '0';
+        else if(str[strNum]>='a'&&str[strNum]<='z')
+            id = str[strNum]-'a';
+        else if(str[strNum] == '-')
+            id = 36;
+        else
+            id = 37;
+
+        bool haveChild = false;
+        for(int i = 0 ; i < maxm ; i++)
+        {
+            if(trie->tree[root][i]!=0){
+                haveChild = true;
+                break;
+            }
+        }
+        if(haveChild)break;
+        trie->tree[trie->pre[root]][strNum] = 0;
+        int tmp = trie->pre[root];
+        trie->pre[root] = 0;
+        root = tmp;
+        strNum--;
+    }
+}
+
+void transIp(unsigned char ip[4] , char *rowIp)
+{
+    int ipLen = strlen(rowIp);
+    unsigned num = 0;
+    int cnt = 0;
+    for(int i = 0 ; i <= ipLen; i++)
+    {
+        if(rowIp[i]=='.'||i == ipLen)
+        {
+            ip[cnt++] = num;
+            num = 0;
+        }
+        else
+        {
+            num = num*10 + rowIp[i]-'0';
+        }
+    }
+}
+
+
+void output()
+{
+    struct Node *p = head->next;
+    while(p!=NULL)
+    {
+        printf("%s -> ",p->domain);
+        p=p->next;
+    }
+    printf("\n");
+}
+
+void updateCache(unsigned char ipAddr[4], char domain[])
+{
+    int num = findNode(cacheTrie,domain);
+    if(num)//domain exits in DNS
+    {
+        struct Node *q,*p;
+        q = head;
+        while(q->next!=NULL)
+        {
+            if(memcmp(q->next->domain,domain,sizeof (domain))==0)
+            {
+                p = q->next;
+                q->next = p->next;
+                p->next = NULL;
+                tail->next = p;
+                tail = p;
+                break ;
+            }
+            q = q->next;
+        }
+    }
+    else
+    {
+        struct Node *q = (struct Node*)malloc(sizeof (struct Node));
+        memcpy(q->domain,domain,sizeof(q->domain));
+        if(cacheSize < maxCacheSize)
+        {
+            insertNode(cacheTrie,domain,ipAddr);
+            cacheSize++;
+            q->next =NULL;
+            tail->next = q;
+            tail = q;
+        }
+        else//delete lru Node
+        {
+            insertNode(cacheTrie,domain,ipAddr);
+            q->next =NULL;
+            tail->next = q;
+            tail = q;
+            q = head->next;
+            head->next = q->next;
+            printf("delete %s\n",q->domain);
+            deleteNode(cacheTrie,q->domain);
+            free(q);
+        }
+    }
+    printf("updata:");
+    output();
+}
+
+bool findInCache(unsigned char ipAddr[4], const char domain[])
+{
+
+    int num = findNode(cacheTrie,domain);
+    printf("findInCache num = %d\n", num);
+
+    if(num == 0)//domain name does not exist in the cache
+    {
+        return false;
+    }
+    memcpy(ipAddr,cacheTrie->toIp[num],sizeof(unsigned char)*4);
+    updateCache(ipAddr,domain);
+    return true;
+}
+
+bool findInTable(unsigned char ipAddr[4], const char domain[])
+{
+    int num = findNode(tableTrie,domain);
+    if(num == 0)
+    {
+        return false;
+    }
+    memcpy(ipAddr,tableTrie->toIp[num],sizeof(unsigned char)*4);
+    printf("findInTable num = %d\n", num);
+    return true;
+}
+// void print_resource_record(struct ResourceRecord *rr);
+int get_A_Record(uint8_t addr[4], const char domain_name[], struct ResourceRecord* rr)
+{
+    printf("myrr1:\n");
+    print_resource_record(rr);
+    if (findInCache(rr->rd_data.a_record.addr, domain_name))
     { // 在缓存中找到，则使用缓存中的ip地址
         return 0;
     }
-    else if (findInTable(addr, domain_name))
+    if (findInTable(rr->rd_data.a_record.addr, domain_name))
     { // 在对照表中找到，则使用对照表中的ip地址
+        // printf("myrr2   :\n");
+        // print_resource_record(rr);
+        // for(int i = 0 ; i < 4; i++)
+        // if(i!=3)
+        //     printf("%u.",addr[i]);
+        // else
+        //     printf("%u",addr[i]);
+        // printf("\n");
         return 0;
     }
     return -1;
@@ -88,6 +330,7 @@ void print_hex(const uint8_t *buf, size_t len)
 
 void print_resource_record(struct ResourceRecord *rr)
 {
+    printf("print_resource_record\n");
     int i;
     while (rr)
     {
@@ -512,18 +755,24 @@ int resolver_process(struct Message *msg)
         rr->type = q->qType;
         rr->class = q->qClass;
         rr->ttl = 60 * 60; // in seconds; 0 means no caching
-
+        
+        print_resource_record(rr);
         printf("Query for '%s'\n", q->qName);
 
-        // We only can only answer two question types so far
-        // and the answer (resource records) will be all put
-        // into the answers list.
-        // This behavior is probably non-standard!
         switch (q->qType)
         {
         case A_Resource_RecordType:
             rr->rd_length = 4;
-            rc = get_A_Record(rr->rd_data.a_record.addr, q->qName);
+            rc = get_A_Record(rr->rd_data.a_record.addr, q->qName, rr);
+
+            // printf("A type rc = %d:\n", rc);
+            // print_resource_record(rr);
+            for(int i = 0 ; i < 4; i++)
+            if(i!=3)
+                printf("%u.",rr->rd_data.a_record.addr[i]);
+            else
+                printf("%u",rr->rd_data.a_record.addr[i]);
+            printf("\n");
             break;
             // case AAAA_Resource_RecordType:
             //     rr->rd_length = 16;
@@ -551,6 +800,8 @@ int resolver_process(struct Message *msg)
 
         if (rc == 0)
         { // ?
+            // printf("if rc == 0: \n");
+            // print_resource_record(rr);
             msg->anCount++;
             rr->next = msg->answers;
             msg->answers = rr;
@@ -606,6 +857,7 @@ int encode_resource_records(struct ResourceRecord *rr, uint8_t **buffer)
 /* @return 0 upon failure, 1 upon success */
 int encode_msg(struct Message *msg, uint8_t **buffer)
 {
+    printf("encode_msg\n");
     struct Question *q;
     int rc;
 
@@ -620,12 +872,11 @@ int encode_msg(struct Message *msg, uint8_t **buffer)
 
         q = q->next;
     }
-
     rc = 0;
     rc |= encode_resource_records(msg->answers, buffer);
     rc |= encode_resource_records(msg->authorities, buffer);
     rc |= encode_resource_records(msg->additionals, buffer);
-
+    printf("rc = %d\n", rc);
     return rc;
 }
 
@@ -727,12 +978,17 @@ void receiveFromLocal()
     if (resolver_process(&msg) == 0)
     { // 可以在本地找到所有question的answer，则将添加answer的msg编码后发送给客户端
         uint8_t *bufferBegin = buffer;
+        printf("resolver_process done:\n");
+
+        print_query(&msg);
         if (encode_msg(&msg, &bufferBegin) != 0)
         {
             return;
         }
         int buflen = bufferBegin - buffer;
+        printf("sendto");
         sendto(clientSock, buffer, buflen, 0, (struct sockaddr *)&clientAddr, addr_len);
+        printf("sendto Done");
     }
     else
     { // 否则，将请求修改ID后转发
@@ -785,7 +1041,7 @@ void receiveFromPublic()
     sendto(clientSock, buffer, nbytes, 0, (struct sockaddr *)&ca, sizeof(ca));
 
     // 存储到cache
-    const char *domain_name = msg.answers->name;
+    char *domain_name = msg.answers->name;
     uint8_t *addr = msg.answers->rd_data.a_record.addr;
     updateCache(addr, domain_name);
     if (msg.qdCount)
@@ -801,6 +1057,41 @@ void receiveFromPublic()
 
 int main()
 {
+    // 初始化字典树
+    cacheTrie = (struct Trie*)malloc(sizeof(struct Trie));
+    tableTrie = (struct Trie*)malloc(sizeof(struct Trie));
+    cacheTrie->totalNode = 0;
+    tableTrie->totalNode = 0;
+    cacheSize = 0;
+
+    // 读入dnsrelay.txt
+    char domain[maxStr] = {0};
+    char ipAddr[maxStr] = {0};
+
+    printf("main1");
+    FILE *fp = NULL;
+    if ((fp = fopen("./dnsrelay.txt", "r")) == NULL)
+    {
+        printf("找不到dnsrelay.txt");
+        return -1;
+    }
+    unsigned char ip[4];
+    printf("main2");
+    while (!feof(fp)) 
+    { 
+        fscanf(fp, "%s", ipAddr);
+        fscanf(fp, "%s", domain);
+        transIp(ip, ipAddr);
+        //printf("%d:%s  %s\n",cnt,name,ipAddr);
+        insertNode(tableTrie, domain, ip);
+    }
+    printf("main3");
+
+    // LRU算法初始化
+    head = (struct Node *)malloc(sizeof(struct Node));
+    head->next = NULL;
+    tail = head;
+
     // 初始化ID转换表
     for (int i = 0; i < ID_TABLE_SIZE; i++)
     {
@@ -846,7 +1137,7 @@ int main()
         receiveFromLocal();
         printf("\n-------2 receiveFromPublic-------\n");
         receiveFromPublic();
-        // Sleep(1);
+        Sleep(1);
     }
 
     closesocket(clientSock);

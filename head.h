@@ -1,10 +1,3 @@
-#ifndef HASH_H
-#define HASH_H
-
-#include <stdio.h>
-#include <string.h>
-#include <stdbool.h>
-
 #define maxn 1000001
 #define maxm 26+10+2
 #define maxStr 1001
@@ -24,12 +17,11 @@ struct Node{
 
 int cacheSize;
 void output();
-bool findInCache(unsigned char ipAddr[4], char domain[]);
-bool findInTable(unsigned char ipAddr[4], char domain[]);
+bool findInCache(unsigned char ipAddr[4], const char domain[]);
+bool findInTable(unsigned char ipAddr[4], const char domain[]);
 void updateCache(unsigned char* ipAddr, char domain[]);
 void simplifyName(char* str);
 void insertNode(struct Trie* trie , char* str ,unsigned char ip[4]);
 void deleteNode(struct Trie* trie ,char* str);
 int findNode(struct Trie* trie ,char* str);
 void transIp(unsigned char ip[4] , char *rowIp);
-#endif // HASH_H
