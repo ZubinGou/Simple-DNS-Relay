@@ -29,19 +29,20 @@ void simplifyName(char *str)
 */
 void insertNode(struct Trie *trie, char *str, unsigned char ip[4])
 {
-    if (str[0] == '\0')
-        return;
-    simplifyName(str);
-    int len = strlen(str);
+    if(str[0]=='\0')return;
+    char ss[300] = {0};
+    memcpy(ss,str,sizeof(ss));
+    simplifyName(ss);
+    int len = strlen(ss);
     int root = 0;
     for (int i = 0; i < len; i++)
     {
         int id;
-        if (str[i] >= '0' && str[i] <= '9')
-            id = 26 + str[i] - '0';
-        else if (str[i] >= 'a' && str[i] <= 'z')
-            id = str[i] - 'a';
-        else if (str[i] == '-')
+        if(ss[i]>='0'&&ss[i]<='9')
+            id = 26 + ss[i] - '0';
+        else if(ss[i]>='a'&&ss[i]<='z')
+            id = ss[i]-'a';
+        else if(ss[i] == '-')
             id = 36;
         else
             id = 37;
@@ -67,12 +68,13 @@ void insertNode(struct Trie *trie, char *str, unsigned char ip[4])
 */
 int findNode(struct Trie *trie, char *str)
 {
-    if (str[0] == '\0')
-        return 0;
-    simplifyName(str);
-    int len = strlen(str);
-    int root = 0;
-    for (int i = 0; i < len; i++)
+    if(str[0]=='\0')return 0;
+    char ss[300] = {0};
+    memcpy(ss,str,sizeof(ss));
+    simplifyName(ss);
+    int len = strlen(ss);
+    int root = 0 ;
+    for(int i = 0 ; i< len ; i++)
     {
         int id;
         /*
@@ -82,11 +84,11 @@ int findNode(struct Trie *trie, char *str)
          * '-'     -> 36
          * '.'     -> 37
         */
-        if (str[i] >= '0' && str[i] <= '9')
-            id = 26 + str[i] - '0';
-        else if (str[i] >= 'a' && str[i] <= 'z')
-            id = str[i] - 'a';
-        else if (str[i] == '-')
+        if(ss[i]>='0'&&ss[i]<='9')
+            id = 26 + ss[i] - '0';
+        else if(ss[i]>='a'&&ss[i]<='z')
+            id = ss[i]-'a';
+        else if(ss[i] == '-')
             id = 36;
         else
             id = 37;
@@ -108,23 +110,22 @@ int findNode(struct Trie *trie, char *str)
 */
 void deleteNode(struct Trie *trie, char *str)
 {
-    if (str[0] == '\0')
-        return;
-    simplifyName(str);
-    int root = findNode(trie, str);
-    if (!root)
-        return;
+    if(str[0]=='\0')return;
+    char ss[300] = {0};
+    memcpy(ss,str,sizeof(ss));
+    simplifyName(ss);
+    int root = findNode(trie,ss);
+    if(!root)return;
     trie->endFlag[root] = false;
     //删除节点
-    int strNum = strlen(str) - 1;
-    while (root != 0)
-    {
+    int strNum = strlen(ss)-1;
+    while(root!=0){
         int id;
-        if (str[strNum] >= '0' && str[strNum] <= '9')
-            id = 26 + str[strNum] - '0';
-        else if (str[strNum] >= 'a' && str[strNum] <= 'z')
-            id = str[strNum] - 'a';
-        else if (str[strNum] == '-')
+        if(ss[strNum]>='0'&&ss[strNum]<='9')
+            id = 26 + ss[strNum] - '0';
+        else if(ss[strNum]>='a'&&ss[strNum]<='z')
+            id = ss[strNum]-'a';
+        else if(ss[strNum] == '-')
             id = 36;
         else
             id = 37;
@@ -265,13 +266,7 @@ int get_A_Record(uint8_t addr[4], const char domain_name[])
         return 0;
     }
     if (findInTable(addr, domain_name))
-    { // 在对照表中找到，则使用对照表中的ip地址
-        for (int i = 0; i < 4; i++)
-            if (i != 3)
-                printf("%u.", addr[i]);
-            else
-                printf("%u", addr[i]);
-        printf("\n");
+    {  // 在对照表中找到，则使用对照表中的ip地址
         return 0;
     }
     return -1;
