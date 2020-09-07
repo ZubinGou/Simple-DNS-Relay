@@ -4,20 +4,20 @@
 /*
 *simplify domain name
 */
-void simplifyName(char* str)
+void simplifyName(char *str)
 {
     int len = strlen(str);
     char ss[255];
     int ssLen = 0;
-    for(int i = 0 ; i < len ; i++)
+    for (int i = 0; i < len; i++)
     {
-//        if(str[i]=='.')
-//            continue;
+        //        if(str[i]=='.')
+        //            continue;
         ss[ssLen++] = str[i];
     }
     ss[ssLen] = '\0';
-    char*sss = strlwr(ss);
-    memcpy(str,sss,sizeof(ss));
+    char *sss = strlwr(ss);
+    memcpy(str, sss, sizeof(ss));
 }
 
 /*
@@ -27,31 +27,32 @@ void simplifyName(char* str)
  * parameter@ip  ipAddr
  * eg:insertNode(trie,"www.baidu.com","10.3.8.211");
 */
-void insertNode(struct Trie* trie , char* str ,unsigned char ip[4])
+void insertNode(struct Trie *trie, char *str, unsigned char ip[4])
 {
-    if(str[0]=='\0')return;
+    if (str[0] == '\0')
+        return;
     simplifyName(str);
     int len = strlen(str);
     int root = 0;
-    for(int i = 0 ; i < len ; i++)
+    for (int i = 0; i < len; i++)
     {
         int id;
-        if(str[i]>='0'&&str[i]<='9')
+        if (str[i] >= '0' && str[i] <= '9')
             id = 26 + str[i] - '0';
-        else if(str[i]>='a'&&str[i]<='z')
-            id = str[i]-'a';
-        else if(str[i] == '-')
+        else if (str[i] >= 'a' && str[i] <= 'z')
+            id = str[i] - 'a';
+        else if (str[i] == '-')
             id = 36;
         else
             id = 37;
 
-        if(!trie->tree[root][id])
+        if (!trie->tree[root][id])
             trie->tree[root][id] = ++trie->totalNode;
         trie->pre[trie->tree[root][id]] = root;
         root = trie->tree[root][id];
     }
 
-    memcpy(trie->toIp[root],ip,sizeof(unsigned char)*4);
+    memcpy(trie->toIp[root], ip, sizeof(unsigned char) * 4);
     trie->endFlag[root] = true;
 }
 
@@ -64,13 +65,14 @@ void insertNode(struct Trie* trie , char* str ,unsigned char ip[4])
  * eg:int nodeNum = findNode(trie,"www.baidu.com");
  *    toIp[nodeNum] is the ipAddr
 */
-int findNode(struct Trie* trie ,char* str)
+int findNode(struct Trie *trie, char *str)
 {
-    if(str[0]=='\0')return 0;
+    if (str[0] == '\0')
+        return 0;
     simplifyName(str);
     int len = strlen(str);
-    int root = 0 ;
-    for(int i = 0 ; i< len ; i++)
+    int root = 0;
+    for (int i = 0; i < len; i++)
     {
         int id;
         /*
@@ -80,19 +82,21 @@ int findNode(struct Trie* trie ,char* str)
          * '-'     -> 36
          * '.'     -> 37
         */
-        if(str[i]>='0'&&str[i]<='9')
+        if (str[i] >= '0' && str[i] <= '9')
             id = 26 + str[i] - '0';
-        else if(str[i]>='a'&&str[i]<='z')
-            id = str[i]-'a';
-        else if(str[i] == '-')
+        else if (str[i] >= 'a' && str[i] <= 'z')
+            id = str[i] - 'a';
+        else if (str[i] == '-')
             id = 36;
         else
             id = 37;
 
-        if(!trie->tree[root][id])return 0;
+        if (!trie->tree[root][id])
+            return 0;
         root = trie->tree[root][id];
     }
-    if(trie->endFlag[root]==false)return 0;
+    if (trie->endFlag[root] == false)
+        return 0;
     return root;
 }
 
@@ -102,35 +106,40 @@ int findNode(struct Trie* trie ,char* str)
  * parameter@str the domain name
  * eg: deleteNode(trie,"www.baidu.com");
 */
-void deleteNode(struct Trie* trie ,char* str)
+void deleteNode(struct Trie *trie, char *str)
 {
-    if(str[0]=='\0')return;
+    if (str[0] == '\0')
+        return;
     simplifyName(str);
-    int root = findNode(trie,str);
-    if(!root)return;
+    int root = findNode(trie, str);
+    if (!root)
+        return;
     trie->endFlag[root] = false;
     //删除节点
-    int strNum = strlen(str)-1;
-    while(root!=0){
+    int strNum = strlen(str) - 1;
+    while (root != 0)
+    {
         int id;
-        if(str[strNum]>='0'&&str[strNum]<='9')
+        if (str[strNum] >= '0' && str[strNum] <= '9')
             id = 26 + str[strNum] - '0';
-        else if(str[strNum]>='a'&&str[strNum]<='z')
-            id = str[strNum]-'a';
-        else if(str[strNum] == '-')
+        else if (str[strNum] >= 'a' && str[strNum] <= 'z')
+            id = str[strNum] - 'a';
+        else if (str[strNum] == '-')
             id = 36;
         else
             id = 37;
 
         bool haveChild = false;
-        for(int i = 0 ; i < maxm ; i++)
+        for (int i = 0; i < maxm; i++)
         {
-            if(trie->tree[root][i]!=0){
+            if (trie->tree[root][i] != 0)
+            {
                 haveChild = true;
                 break;
             }
         }
-        if(haveChild)break;
+        if (haveChild)
+            break;
         trie->tree[trie->pre[root]][strNum] = 0;
         int tmp = trie->pre[root];
         trie->pre[root] = 0;
@@ -139,80 +148,79 @@ void deleteNode(struct Trie* trie ,char* str)
     }
 }
 
-void transIp(unsigned char ip[4] , char *rowIp)
+void transIp(unsigned char ip[4], char *rowIp)
 {
     int ipLen = strlen(rowIp);
     unsigned num = 0;
     int cnt = 0;
-    for(int i = 0 ; i <= ipLen; i++)
+    for (int i = 0; i <= ipLen; i++)
     {
-        if(rowIp[i]=='.'||i == ipLen)
+        if (rowIp[i] == '.' || i == ipLen)
         {
             ip[cnt++] = num;
             num = 0;
         }
         else
         {
-            num = num*10 + rowIp[i]-'0';
+            num = num * 10 + rowIp[i] - '0';
         }
     }
 }
 
-
 void output()
 {
     struct Node *p = head->next;
-    while(p!=NULL)
+    while (p != NULL)
     {
-        printf("%s -> ",p->domain);
-        p=p->next;
+        printf("%s -> ", p->domain);
+        p = p->next;
     }
     printf("\n");
 }
 
 void updateCache(unsigned char ipAddr[4], char domain[])
 {
-    int num = findNode(cacheTrie,domain);
-    if(num)//domain exits in DNS
+    int num = findNode(cacheTrie, domain);
+    if (num) //domain exits in DNS
     {
-        struct Node *q,*p;
+        struct Node *q, *p;
         q = head;
-        while(q->next!=NULL)
+        while (q->next != NULL)
         {
-            if(memcmp(q->next->domain,domain,sizeof (domain))==0)
+            if (memcmp(q->next->domain, domain, sizeof(domain)) == 0)
             {
                 p = q->next;
                 q->next = p->next;
                 p->next = NULL;
                 tail->next = p;
                 tail = p;
-                break ;
+                break;
             }
             q = q->next;
         }
     }
     else
     {
-        struct Node *q = (struct Node*)malloc(sizeof (struct Node));
-        memcpy(q->domain,domain,sizeof(q->domain));
-        if(cacheSize < maxCacheSize)
+        struct Node *q = (struct Node *)malloc(sizeof(struct Node));
+        memcpy(q->domain, domain, sizeof(q->domain));
+        if (cacheSize < maxCacheSize)
         {
-            insertNode(cacheTrie,domain,ipAddr);
+            insertNode(cacheTrie, domain, ipAddr);
             cacheSize++;
-            q->next =NULL;
+            q->next = NULL;
             tail->next = q;
             tail = q;
         }
-        else//delete lru Node
+        else //delete lru Node
         {
-            insertNode(cacheTrie,domain,ipAddr);
-            q->next =NULL;
+            insertNode(cacheTrie, domain, ipAddr);
+            q->next = NULL;
             tail->next = q;
             tail = q;
             q = head->next;
             head->next = q->next;
-            printf("delete %s\n",q->domain);
-            deleteNode(cacheTrie,q->domain);
+            printf("delete %s\n", q->domain);
+            deleteNode(cacheTrie, q->domain);
             free(q);
         }
     }
@@ -223,48 +231,47 @@ void updateCache(unsigned char ipAddr[4], char domain[])
 bool findInCache(unsigned char ipAddr[4], const char domain[])
 {
 
-    int num = findNode(cacheTrie,domain);
+    // int num = findNode(cacheTrie,domain);
+    int num = 0;
     printf("findInCache num = %d\n", num);
 
-    if(num == 0)//domain name does not exist in the cache
+    if (num == 0) //domain name does not exist in the cache
     {
         return false;
     }
-    memcpy(ipAddr,cacheTrie->toIp[num],sizeof(unsigned char)*4);
-    updateCache(ipAddr,domain);
+    memcpy(ipAddr, cacheTrie->toIp[num], sizeof(unsigned char) * 4);
+    updateCache(ipAddr, domain);
     return true;
 }
 
 bool findInTable(unsigned char ipAddr[4], const char domain[])
 {
-    int num = findNode(tableTrie,domain);
-    if(num == 0)
+    // int num = findNode(tableTrie,domain);
+    int num = 13;
+    if (num == 0)
     {
         return false;
     }
-    memcpy(ipAddr,tableTrie->toIp[num],sizeof(unsigned char)*4);
+    memcpy(ipAddr, tableTrie->toIp[num], sizeof(unsigned char) * 4);
     printf("findInTable num = %d\n", num);
     return true;
 }
-// void print_resource_record(struct ResourceRecord *rr);
-int get_A_Record(uint8_t addr[4], const char domain_name[], struct ResourceRecord* rr)
+
+int get_A_Record(uint8_t addr[4], const char domain_name[])
 {
-    printf("myrr1:\n");
-    print_resource_record(rr);
-    if (findInCache(rr->rd_data.a_record.addr, domain_name))
+
+    if (findInCache(addr, domain_name))
     { // 在缓存中找到，则使用缓存中的ip地址
         return 0;
     }
-    if (findInTable(rr->rd_data.a_record.addr, domain_name))
+    if (findInTable(addr, domain_name))
     { // 在对照表中找到，则使用对照表中的ip地址
-        // printf("myrr2   :\n");
-        // print_resource_record(rr);
-        // for(int i = 0 ; i < 4; i++)
-        // if(i!=3)
-        //     printf("%u.",addr[i]);
-        // else
-        //     printf("%u",addr[i]);
-        // printf("\n");
+        for (int i = 0; i < 4; i++)
+            if (i != 3)
+                printf("%u.", addr[i]);
+            else
+                printf("%u", addr[i]);
+        printf("\n");
         return 0;
     }
     return -1;
@@ -330,7 +337,6 @@ void print_hex(const uint8_t *buf, size_t len)
 
 void print_resource_record(struct ResourceRecord *rr)
 {
-    printf("print_resource_record\n");
     int i;
     while (rr)
     {
@@ -487,7 +493,7 @@ char *decode_domain_name(const uint8_t **buffer, int offset)
     print_hex(*buffer, 50);
 
     char name[256];
-    const uint8_t *buf = *buffer;   
+    const uint8_t *buf = *buffer;
     int i = 0;
     int j = 0;
 
@@ -497,7 +503,7 @@ char *decode_domain_name(const uint8_t **buffer, int offset)
         *buffer += 2;
         return decode_domain_name(&nameAddr, buf[1]);
     }
-    
+
     while (buf[i] != 0 && buf[i] != 0xc0)
     { // 地址部分
         if (i != 0)
@@ -631,7 +637,6 @@ int decode_resource_records(struct ResourceRecord *rr, const uint8_t **buffer, c
     // printf("begin");
     // print_hex(*buffer, 200);
 
-
     rr->type = get16bits(buffer);
     rr->class = get16bits(buffer);
     rr->ttl = get32bits(buffer);
@@ -755,23 +760,37 @@ int resolver_process(struct Message *msg)
         rr->type = q->qType;
         rr->class = q->qClass;
         rr->ttl = 60 * 60; // in seconds; 0 means no caching
-        
-        print_resource_record(rr);
+
         printf("Query for '%s'\n", q->qName);
 
+        print_resource_record(rr);
         switch (q->qType)
         {
         case A_Resource_RecordType:
             rr->rd_length = 4;
-            rc = get_A_Record(rr->rd_data.a_record.addr, q->qName, rr);
+            uint8_t tempAddr[4];
+            // rc = get_A_Record(tempAddr, q->qName);
 
-            // printf("A type rc = %d:\n", rc);
-            // print_resource_record(rr);
-            for(int i = 0 ; i < 4; i++)
-            if(i!=3)
-                printf("%u.",rr->rd_data.a_record.addr[i]);
-            else
-                printf("%u",rr->rd_data.a_record.addr[i]);
+            char *qn;
+            // = q->qName;
+            // for (int i = 0; i < 4; i ++) {
+            //     printf("%d ", tempAddr[i]);
+            // }
+            // rr->rd_data.a_record.addr = tempAddr;
+
+            rc = get_A_Record(rr->rd_data.a_record.addr, qn);
+            printf("sizeof(qn): %d\n", strlen(qn));
+            printf("%s\n", qn);
+            // for (int i = 0; qn[i] != "\0"; i++) {
+            //     q->qName[i] = qn[i];
+            // }
+            print_resource_record(rr);
+
+            for (int i = 0; i < 4; i++)
+                if (i != 3)
+                    printf("%u.", rr->rd_data.a_record.addr[i]);
+                else
+                    printf("%u", rr->rd_data.a_record.addr[i]);
             printf("\n");
             break;
             // case AAAA_Resource_RecordType:
@@ -800,8 +819,8 @@ int resolver_process(struct Message *msg)
 
         if (rc == 0)
         { // ?
-            // printf("if rc == 0: \n");
-            // print_resource_record(rr);
+            printf("if rc == 0: \n");
+            print_resource_record(rr);
             msg->anCount++;
             rr->next = msg->answers;
             msg->answers = rr;
@@ -1058,8 +1077,8 @@ void receiveFromPublic()
 int main()
 {
     // 初始化字典树
-    cacheTrie = (struct Trie*)malloc(sizeof(struct Trie));
-    tableTrie = (struct Trie*)malloc(sizeof(struct Trie));
+    cacheTrie = (struct Trie *)malloc(sizeof(struct Trie));
+    tableTrie = (struct Trie *)malloc(sizeof(struct Trie));
     cacheTrie->totalNode = 0;
     tableTrie->totalNode = 0;
     cacheSize = 0;
@@ -1077,8 +1096,8 @@ int main()
     }
     unsigned char ip[4];
     printf("main2");
-    while (!feof(fp)) 
-    { 
+    while (!feof(fp))
+    {
         fscanf(fp, "%s", ipAddr);
         fscanf(fp, "%s", domain);
         transIp(ip, ipAddr);
@@ -1137,7 +1156,7 @@ int main()
         receiveFromLocal();
         printf("\n-------2 receiveFromPublic-------\n");
         receiveFromPublic();
-        Sleep(1);
+        // Sleep(1);
     }
 
     closesocket(clientSock);
