@@ -498,6 +498,9 @@ int resolver_process(struct Message *msg)
         case A_Resource_RecordType:
             rr->rd_length = 4;
             rc = get_A_Record(rr->rd_data.a_record.addr, q->qName);
+            if (rc == -1) // 本地没有找到
+                break;
+            printf("rc = %d\n", rc);
             int i;
             for (i = 0; i < 4; ++i)
             {
@@ -506,10 +509,12 @@ int resolver_process(struct Message *msg)
             }
             if (i == 4)
             { // 本地查到地址为0.0.0.0，需要屏蔽
+                printf("屏蔽地址\n");
                 msg->rcode = NameError_ResponseType; // 只在权威DNS服务器的响应中有意义，表示请求中的域名不存在。
                 rc = 1;
                 return rc;
             }
+            break;
 
             // case AAAA_Resource_RecordType:
             //     rr->rd_length = 16;
@@ -676,7 +681,7 @@ void receiveFromLocal()
     memset(&msg, 0, sizeof(struct Message));
 
     nbytes = recvfrom(clientSock, buffer, sizeof(buffer), 0, (struct sockaddr *)&clientAddr, &addr_len);
-    printf("\n-------1 receiveFromLocal-------\n");
+    // printf("\n-------1 receiveFromLocal-------\n");
 
     if (nbytes < 0 || decode_msg(&msg, buffer, nbytes) != 0)
     {
@@ -704,6 +709,7 @@ void receiveFromLocal()
     }
     else
     { // 否则，将请求修改ID后转发
+        printf("将请求修改ID后转发\n");
         uint16_t nId = newId(clientId, clientAddr);
         if (nId == ID_TABLE_SIZE)
         {
@@ -732,7 +738,7 @@ void receiveFromPublic()
 
     // public dns
     nbytes = recvfrom(serverSock, buffer, sizeof(buffer), 0, (struct sockaddr *)&serverAddr, &addr_len);
-    printf("\n-------2 receiveFromPublic-------\n");
+    // printf("\n-------2 receiveFromPublic-------\n");
     if (nbytes < 0 || decode_msg(&msg, buffer, nbytes) != 0)
     {
         return;
