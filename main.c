@@ -14,15 +14,17 @@ int get_A_Record(uint8_t addr[4], const char domain_name[])
     if (findInCache(addr, domain_name))
     { // 在缓存中找到，则使用缓存中的ip地址
         if (DEBUG)
-            printf("Find %s in Cache.\n", domain_name);
+            printf("--Find '%s' in Cache.\n", domain_name);
         return 0;
     }
     if (findInTable(addr, domain_name))
     { // 在对照表中找到，则使用对照表中的ip地址
         if (DEBUG)
-            printf("Find %s in Table.\n", domain_name);
+            printf("--Find '%s' in Table.\n", domain_name);
         return 0;
     }
+    if (DEBUG)
+        printf("--Can't find '%s' in Cache or Table.\n", domain_name);
     return -1;
 }
 
@@ -367,6 +369,8 @@ void encode_header(struct Message *msg, uint8_t **buffer)
 
 int decode_resource_records(struct ResourceRecord *rr, const uint8_t **buffer, const uint8_t *oriBuffer)
 {
+    // printf("decode_resource_records\n");
+    // print_hex(*buffer, 50);
     rr->name = decode_domain_name(buffer, *buffer - oriBuffer);
 
     rr->type = get16bits(buffer);
@@ -392,7 +396,7 @@ int decode_resource_records(struct ResourceRecord *rr, const uint8_t **buffer, c
     case CNAME_Resource_RecordType:
         rr->rd_data.cname_record.name = decode_domain_name(buffer, *buffer - oriBuffer);
     default:
-        fprintf(stderr, "Unknown type %u. => Ignore resource record.\n", rr->type);
+        fprintf(stderr, "ERROR @decode_resource_records: Unknown type %u. => Ignore resource record.\n", rr->type);
         return -1;
     }
     return 0;
@@ -582,7 +586,7 @@ int encode_resource_records(struct ResourceRecord *rr, uint8_t **buffer)
                 put8bits(buffer, rr->rd_data.txt_record.txt_data[i]);
             break;
         default:
-            fprintf(stderr, "Unknown type %u. => Ignore resource record.\n", rr->type);
+            fprintf(stderr, "ERROR @encode_resource_records: Unknown type %u. => Ignore resource record.\n", rr->type);
             return 1;
         }
 
@@ -677,7 +681,7 @@ void receiveFromLocal()
         return;
     }
     if (DEBUG) {
-        printf("\nRECV ");
+        printf("\n>>> RECV from Client\n");
     }
     if (LOG || DEBUG) {
         time_t t;
@@ -708,7 +712,7 @@ void receiveFromLocal()
         }
         int buflen = bufferBegin - buffer;
         if (DEBUG) {
-            printf("SEND to %15s:%-5d ", inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
+            printf("<<< SEND to Client %s:%d ", inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
             printf("(%d bytes)\n", buflen);
             // print_query(&msg);
         }
@@ -726,7 +730,7 @@ void receiveFromLocal()
         {
             memcpy(buffer, &nId, sizeof(uint16_t));
             if (DEBUG) {
-                printf("SEND to %s:%d ", inet_ntoa(serverAddr.sin_addr), ntohs(serverAddr.sin_port));
+                printf("<<< SEND to Server %s:%d ", inet_ntoa(serverAddr.sin_addr), ntohs(serverAddr.sin_port));
                 printf("(%d bytes) [ID %x=>%x]\n", nbytes, clientId, nId);
             }
             nbytes = sendto(serverSock, buffer, nbytes, 0, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
@@ -753,6 +757,9 @@ void receiveFromPublic()
     {
         return;
     }
+    if (DEBUG) {
+        printf("\n>>> RECV from Server\n");
+    }
     if (LOG || DEBUG) {
         time_t t;
         struct tm *p;
@@ -764,17 +771,23 @@ void receiveFromPublic()
         printf("Server %15s:%-5d   ", inet_ntoa(serverAddr.sin_addr), ntohs(serverAddr.sin_port));
         printf("%s\n", msg.questions->qName);
     }
-    if (DEBUG)
+    if (DEBUG) {
+        printf("(%d bytes)\n", sizeof(buffer));
         print_query(&msg);
+    }
 
     // ID映射
     uint16_t nId = msg.id;
-    IdTable[nId].clientId = htons(IdTable[nId].clientId);
-    memcpy(buffer, &IdTable[nId].clientId, sizeof(uint16_t));
+    uint16_t clientId = htons(IdTable[nId].clientId);
+    memcpy(buffer, &clientId, sizeof(uint16_t));
 
     struct sockaddr_in ca = IdTable[nId].clientAddr;
-
+    
     IdTable[nId].expireTime = 0; // 响应完毕后立即过期
+    if (DEBUG) {
+        printf("<<< SEND to Client %s:%d ", inet_ntoa(serverAddr.sin_addr), ntohs(serverAddr.sin_port));
+        printf("(%d bytes) [ID %x=>%x]\n", nbytes, nId, ntohs(clientId));
+    }
     sendto(clientSock, buffer, nbytes, 0, (struct sockaddr *)&ca, sizeof(ca));
 
     // 存储answer中的A型记录到cache

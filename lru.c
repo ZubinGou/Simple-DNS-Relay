@@ -29,6 +29,8 @@ void updateCache(unsigned char ipAddr[4], const char domain[])
             if (memcmp(q->next->domain, domain, strlen(domain)) == 0)
             {
                 p = q->next;
+                if (p->next == NULL)
+                    break;
                 q->next = p->next;
                 p->next = NULL;
                 tail->next = p;
@@ -66,7 +68,7 @@ void updateCache(unsigned char ipAddr[4], const char domain[])
 
 bool findInCache(unsigned char ipAddr[4], const char domain[])
 {
-    int num = findNode(cacheTrie,domain);
+    int num = findNode(cacheTrie, domain);
     if (num == 0) //domain name does not exist in the cache
     {
         return false;
@@ -78,7 +80,7 @@ bool findInCache(unsigned char ipAddr[4], const char domain[])
 
 bool findInTable(unsigned char ipAddr[4], const char domain[])
 {
-    int num = findNode(tableTrie,domain);
+    int num = findNode(tableTrie, domain);
     if (num == 0)
     {
         return false;

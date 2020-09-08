@@ -21,12 +21,12 @@
 #define ID_EXPIRE_TIME 4 // 5s
 #define SELECT_MODE 1
 #define NONBLOCK_MODE 2
-#define MODE 2
+#define MODE 1
 
 char PUBLIC_DNS_IP[16] = "10.3.9.4";
 char DNS_TABLE_FILE[100] = "./dnsrelay.txt";
 int PORT = 53;
-bool DEBUG = true;
+bool DEBUG = false;
 bool LOG = true;
 int requstCount = 0;
 
