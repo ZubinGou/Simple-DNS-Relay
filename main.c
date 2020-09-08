@@ -227,8 +227,8 @@ void put32bits(uint8_t **buffer, uint32_t value)
 */
 char *decode_domain_name(const uint8_t **buffer, int offset)
 {
-    printf("decode_domain_name:\n");
-    print_hex(*buffer, 50);
+    // printf("decode_domain_name:\n");
+    // print_hex(*buffer, 50);
 
     char name[256];
     const uint8_t *buf = *buffer;
@@ -291,7 +291,7 @@ char *decode_domain_name(const uint8_t **buffer, int offset)
     *buffer += i;
     name[j] = '\0';
     // *oribuffer += i + 1; //also jump over the last 0
-    printf("get decode name: %s\n\n", name);
+    // printf("get decode name: %s\n\n", name);
     return strdup(name);
 }
 
@@ -780,9 +780,10 @@ void receiveFromPublic()
 
 #define SELECT_MODE 1
 #define NONBLOCK_MODE 2
-int main()
+int main(int argc, char *argv[])
 {
-    int mode = SELECT_MODE;
+    // int mode = SELECT_MODE;
+    int mode = NONBLOCK_MODE;
     // 初始化字典树
     cacheTrie = (struct Trie *)malloc(sizeof(struct Trie));
     tableTrie = (struct Trie *)malloc(sizeof(struct Trie));
@@ -858,9 +859,9 @@ int main()
 
     if(mode == NONBLOCK_MODE)
     {
-        int non_block = 1;
-        ioctlsocket(clientSock, FIONBIO, (u_long FAR *)&non_block);
-        ioctlsocket(serverSock, FIONBIO, (u_long FAR *)&non_block);
+        int nonBlock = 1;
+        ioctlsocket(clientSock, FIONBIO, (u_long FAR *)&nonBlock);
+        ioctlsocket(serverSock, FIONBIO, (u_long FAR *)&nonBlock);
         while (1)
         {
             receiveFromLocal();

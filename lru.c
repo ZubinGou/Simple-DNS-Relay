@@ -79,11 +79,11 @@ bool findInCache(unsigned char ipAddr[4], const char domain[])
 bool findInTable(unsigned char ipAddr[4], const char domain[])
 {
     int num = findNode(tableTrie,domain);
+    printf("findInTable num = %d\n", num);
     if (num == 0)
     {
         return false;
     }
     memcpy(ipAddr, tableTrie->toIp[num], sizeof(unsigned char) * 4);
-    printf("findInTable num = %d\n", num);
     return true;
 }
