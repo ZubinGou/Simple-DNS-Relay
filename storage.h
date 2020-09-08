@@ -10,7 +10,7 @@
 #define maxm 26+10+2
 #define maxStr 1001
 
-#define maxCacheSize 4
+#define maxCacheSize 100
 struct Trie{
     int tree[maxn][maxm];       //字典树
     int pre[maxn];              //记录父亲节点
@@ -24,7 +24,7 @@ struct Node{
 }*head,*tail;
 
 int cacheSize;
-void output();
+void printCache();
 bool findInCache(unsigned char ipAddr[4], const char domain[]);
 bool findInTable(unsigned char ipAddr[4], const char domain[]);
 void updateCache(unsigned char* ipAddr, const char domain[]);

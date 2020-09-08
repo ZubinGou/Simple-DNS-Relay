@@ -778,8 +778,11 @@ void receiveFromPublic()
         free_resource_records(msg.answers);
 }
 
+#define SELECT_MODE 1
+#define NONBLOCK_MODE 2
 int main()
 {
+    int mode = SELECT_MODE;
     // 初始化字典树
     cacheTrie = (struct Trie *)malloc(sizeof(struct Trie));
     tableTrie = (struct Trie *)malloc(sizeof(struct Trie));
@@ -830,10 +833,6 @@ int main()
     clientSock = socket(AF_INET, SOCK_DGRAM, 0);
     serverSock = socket(AF_INET, SOCK_DGRAM, 0);
 
-    int non_block = 1;
-    ioctlsocket(clientSock, FIONBIO, (u_long FAR *)&non_block);
-    ioctlsocket(serverSock, FIONBIO, (u_long FAR *)&non_block);
-
     memset(&clientAddr, 0, sizeof(clientAddr));
     clientAddr.sin_family = AF_INET;
     clientAddr.sin_addr.s_addr = INADDR_ANY;
@@ -857,10 +856,50 @@ int main()
 
     printf("Listening on port %u.\n", PORT);
 
-    while (1)
+    if(mode == NONBLOCK_MODE)
     {
-        receiveFromLocal();
-        receiveFromPublic();
+        int non_block = 1;
+        ioctlsocket(clientSock, FIONBIO, (u_long FAR *)&non_block);
+        ioctlsocket(serverSock, FIONBIO, (u_long FAR *)&non_block);
+        while (1)
+        {
+            receiveFromLocal();
+            receiveFromPublic();
+        }
+    }
+    else if(mode == SELECT_MODE)
+    {
+        fd_set fdread;
+        while (1)
+        {
+            FD_ZERO(&fdread);
+            FD_SET(clientSock, &fdread);
+            FD_SET(serverSock, &fdread);
+            TIMEVAL tv;//设置超时等待时间
+            tv.tv_sec = 0;
+            tv.tv_usec = 10;
+            int ret = select(0, &fdread, NULL, NULL, &tv);
+            if (SOCKET_ERROR == ret)
+            {
+                printf("select error:%d.\n", WSAGetLastError());
+            }
+            if (ret > 0)
+            {
+                if (FD_ISSET(clientSock, &fdread))
+                {
+                    printf("local pre\n");
+                    receiveFromLocal();
+                    printf("local later\n");
+                }
+                if (FD_ISSET(serverSock, &fdread))
+                {
+                    printf("public pre\n");
+                    receiveFromPublic();
+                    printf("public later\n");
+                }
+            }
+            //printf("SELECT\n");
+        }
     }
 
     closesocket(clientSock);

@@ -1,11 +1,11 @@
 #include "storage.h"
 
-void output()
+void printCache()
 {
     struct Node *p = head->next;
     while (p != NULL)
     {
-        printf("%s -> ", p->domain);
+        printf("%s -> \n", p->domain);
         p = p->next;
     }
     printf("\n");
@@ -58,7 +58,7 @@ void updateCache(unsigned char ipAddr[4], const char domain[])
         }
     }
     printf("updata:");
-    output();
+    printCache();
 }
 
 bool findInCache(unsigned char ipAddr[4], const char domain[])
