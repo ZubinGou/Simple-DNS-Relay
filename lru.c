@@ -2,10 +2,16 @@
 
 void printCache()
 {
+    printf("\n===============Cache=============\n");
     struct Node *p = head->next;
+    int cacheCount = 0;
     while (p != NULL)
     {
-        printf("%s -> \n", p->domain);
+        int num = findNode(cacheTrie, p->domain);
+        printf("%2d: %s => ", cacheCount++, p->domain);
+        unsigned char ip[4];
+        memcpy(ip, cacheTrie->toIp[num], sizeof(ip));
+        printf("%u.%u.%u.%u\n", ip[0], ip[1], ip[2], ip[3]);
         p = p->next;
     }
     printf("\n");
@@ -52,21 +58,15 @@ void updateCache(unsigned char ipAddr[4], const char domain[])
             tail = q;
             q = head->next;
             head->next = q->next;
-            printf("delete %s\n", q->domain);
             deleteNode(cacheTrie, q->domain);
             free(q);
         }
     }
-    printf("updata:");
-    printCache();
 }
 
 bool findInCache(unsigned char ipAddr[4], const char domain[])
 {
-
     int num = findNode(cacheTrie,domain);
-    printf("findInCache num = %d\n", num);
-
     if (num == 0) //domain name does not exist in the cache
     {
         return false;
@@ -79,7 +79,6 @@ bool findInCache(unsigned char ipAddr[4], const char domain[])
 bool findInTable(unsigned char ipAddr[4], const char domain[])
 {
     int num = findNode(tableTrie,domain);
-    printf("findInTable num = %d\n", num);
     if (num == 0)
     {
         return false;

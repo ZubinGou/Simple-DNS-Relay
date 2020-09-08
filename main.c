@@ -1,3 +1,10 @@
+//============================================================================
+// @Name : main.cpp
+// @Author : Gou Zhibin, Liu Jun
+// @Version : 2.0
+// @Copyright : BUPT
+// @Description : main file of Mini-Dns
+//============================================================================
 #include "main.h"
 #include "storage.h"
 
@@ -6,10 +13,14 @@ int get_A_Record(uint8_t addr[4], const char domain_name[])
 
     if (findInCache(addr, domain_name))
     { // 在缓存中找到，则使用缓存中的ip地址
+        if (DEBUG)
+            printf("Find %s in Cache.\n", domain_name);
         return 0;
     }
     if (findInTable(addr, domain_name))
     { // 在对照表中找到，则使用对照表中的ip地址
+        if (DEBUG)
+            printf("Find %s in Table.\n", domain_name);
         return 0;
     }
     return -1;
@@ -264,12 +275,6 @@ char *decode_domain_name(const uint8_t **buffer, int offset)
     { // 3. 地址 + 指针
         i++;
         buf = *buffer - offset + buf[i]; // 指针指向地址
-        printf("%x\n", *buffer);
-        printf("offset = %d\n", offset);
-        printf("buf[i] = %d\n", buf[i]);
-        printf("buf=\n");
-        print_hex(buf, 50);
-
         int k = 0;
         while (buf[k] != 0)
         { // 数字部分
@@ -286,12 +291,10 @@ char *decode_domain_name(const uint8_t **buffer, int offset)
     }
     else
     {
-        printf("error\n");
+        printf("ERROR: decode_domain_name\n");
     }
     *buffer += i;
     name[j] = '\0';
-    // *oribuffer += i + 1; //also jump over the last 0
-    // printf("get decode name: %s\n\n", name);
     return strdup(name);
 }
 
@@ -330,7 +333,6 @@ void encode_domain_name(uint8_t **buffer, const char *domain)
 void decode_header(struct Message *msg, const uint8_t **buffer)
 {
     msg->id = get16bits(buffer);
-    printf("get msg->id = %d\n", msg->id);
 
     uint32_t fields = get16bits(buffer);
     msg->qr = (fields & QR_MASK) >> 15;
@@ -404,8 +406,6 @@ int decode_msg(struct Message *msg, const uint8_t *buffer, int size)
 
     // printf("decode header: ");
     // print_hex(buffer, 200);
-    printf("0: %x\n", buffer);
-    printf("0: %x\n", oriBuffer);
 
     // 解析Question
     for (uint16_t i = 0; i < msg->qdCount; ++i)
@@ -490,9 +490,6 @@ int resolver_process(struct Message *msg)
         rr->class = q->qClass;
         rr->ttl = 60 * 60; // in seconds; 0 means no caching
 
-        printf("Query for '%s'\n", q->qName);
-
-        print_resource_record(rr);
         switch (q->qType)
         {
         case A_Resource_RecordType:
@@ -500,7 +497,6 @@ int resolver_process(struct Message *msg)
             rc = get_A_Record(rr->rd_data.a_record.addr, q->qName);
             if (rc == -1) // 本地没有找到
                 break;
-            printf("rc = %d\n", rc);
             int i;
             for (i = 0; i < 4; ++i)
             {
@@ -509,7 +505,8 @@ int resolver_process(struct Message *msg)
             }
             if (i == 4)
             { // 本地查到地址为0.0.0.0，需要屏蔽
-                printf("屏蔽地址\n");
+                if (DEBUG)
+                    printf("Blocked Sites: %s\n", q->qName);
                 msg->rcode = NameError_ResponseType; // 只在权威DNS服务器的响应中有意义，表示请求中的域名不存在。
                 rc = 1;
                 return rc;
@@ -541,9 +538,7 @@ int resolver_process(struct Message *msg)
         }
 
         if (rc == 0)
-        { // ?
-            printf("if rc == 0: \n");
-            print_resource_record(rr);
+        {
             msg->anCount++;
             rr->next = msg->answers;
             msg->answers = rr;
@@ -599,12 +594,10 @@ int encode_resource_records(struct ResourceRecord *rr, uint8_t **buffer)
 /* @return 0 upon failure, 1 upon success */
 int encode_msg(struct Message *msg, uint8_t **buffer)
 {
-    printf("encode_msg\n");
     struct Question *q;
     int rc;
 
     encode_header(msg, buffer);
-
     q = msg->questions;
     while (q) // 解析所有的question
     {
@@ -618,7 +611,6 @@ int encode_msg(struct Message *msg, uint8_t **buffer)
     rc |= encode_resource_records(msg->answers, buffer);
     rc |= encode_resource_records(msg->authorities, buffer);
     rc |= encode_resource_records(msg->additionals, buffer);
-    printf("rc = %d\n", rc);
     return rc;
 }
 
@@ -637,11 +629,10 @@ uint16_t newId(uint16_t clientId, struct sockaddr_in clientAddr)
         {
             IdTable[i].clientId = clientId;
             IdTable[i].clientAddr = clientAddr;
-            IdTable[i].expireTime = ID_EXPIRE_TIME + time(NULL);
+            IdTable[i].expireTime = ID_EXPIRE_TIME + time(NULL); // 失效时间
         }
         break;
     }
-    printf("%d => %d\n", clientId, i);
     return i;
 }
 
@@ -651,7 +642,6 @@ void free_resource_records(struct ResourceRecord *rr)
     struct ResourceRecord *next;
     while (rr)
     {
-        printf("free_resource_records\n");
         free(rr->name);
         next = rr->next;
         free(rr);
@@ -681,43 +671,64 @@ void receiveFromLocal()
     memset(&msg, 0, sizeof(struct Message));
 
     nbytes = recvfrom(clientSock, buffer, sizeof(buffer), 0, (struct sockaddr *)&clientAddr, &addr_len);
-    // printf("\n-------1 receiveFromLocal-------\n");
 
     if (nbytes < 0 || decode_msg(&msg, buffer, nbytes) != 0)
     {
         return;
     }
+    if (DEBUG) {
+        printf("\nRECV ");
+    }
+    if (LOG || DEBUG) {
+        time_t t;
+        struct tm *p;
+        time(&t);
+        p = localtime(&t); //取得当地时间
+        printf("@%3d:  ", requstCount++);
+        printf ("%d-%02d-%02d ", (1900+p->tm_year), (1+p->tm_mon), p->tm_mday);
+        printf("%02d:%02d:%02d  ", p->tm_hour, p->tm_min, p->tm_sec);
+        printf("Client %15s:%-5d   ", inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
+        printf("%s\n", msg.questions->qName);
+    }
+    if (DEBUG) {
+        printf("(%d bytes)\n", sizeof(buffer));
+        print_query(&msg);
+    }
+
     uint16_t clientId = msg.id;
-    /* Print query */
-    print_query(&msg);
     int rc = resolver_process(&msg);
     if (rc == 0 || rc == 1)
     {   // 0: 可以在本地找到所有question的answer，则将添加answer的msg编码后发送给客户端
         // 1: 屏蔽功能
         uint8_t *bufferBegin = buffer;
-        printf("resolver_process done:\n");
 
-        print_query(&msg);
         if (encode_msg(&msg, &bufferBegin) != 0)
         {
             return;
         }
         int buflen = bufferBegin - buffer;
-        printf("sendto");
+        if (DEBUG) {
+            printf("SEND to %15s:%-5d ", inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
+            printf("(%d bytes)\n", buflen);
+            // print_query(&msg);
+        }
         sendto(clientSock, buffer, buflen, 0, (struct sockaddr *)&clientAddr, addr_len);
-        printf("sendto Done");
     }
     else
     { // 否则，将请求修改ID后转发
-        printf("将请求修改ID后转发\n");
         uint16_t nId = newId(clientId, clientAddr);
         if (nId == ID_TABLE_SIZE)
         {
-            printf("ID Table if Full\n");
+            if (DEBUG)
+                printf("ID Table is Full!\n"); // TODO 满了之后的处理
         }
         else
         {
             memcpy(buffer, &nId, sizeof(uint16_t));
+            if (DEBUG) {
+                printf("SEND to %s:%d ", inet_ntoa(serverAddr.sin_addr), ntohs(serverAddr.sin_port));
+                printf("(%d bytes) [ID %x=>%x]\n", nbytes, clientId, nId);
+            }
             nbytes = sendto(serverSock, buffer, nbytes, 0, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
         }
     }
@@ -738,21 +749,29 @@ void receiveFromPublic()
 
     // public dns
     nbytes = recvfrom(serverSock, buffer, sizeof(buffer), 0, (struct sockaddr *)&serverAddr, &addr_len);
-    // printf("\n-------2 receiveFromPublic-------\n");
     if (nbytes < 0 || decode_msg(&msg, buffer, nbytes) != 0)
     {
         return;
     }
-
-    print_query(&msg);
+    if (LOG || DEBUG) {
+        time_t t;
+        struct tm *p;
+        time(&t);
+        p = localtime(&t); //取得当地时间
+        printf("@%3d:  ", requstCount++);
+        printf ("%d-%02d-%02d ", (1900+p->tm_year), (1+p->tm_mon), p->tm_mday);
+        printf("%02d:%02d:%02d  ", p->tm_hour, p->tm_min, p->tm_sec);
+        printf("Server %15s:%-5d   ", inet_ntoa(serverAddr.sin_addr), ntohs(serverAddr.sin_port));
+        printf("%s\n", msg.questions->qName);
+    }
+    if (DEBUG)
+        print_query(&msg);
 
     // ID映射
     uint16_t nId = msg.id;
-    // put16bits(&buffer, IdTable[nId].clientId);
     IdTable[nId].clientId = htons(IdTable[nId].clientId);
     memcpy(buffer, &IdTable[nId].clientId, sizeof(uint16_t));
 
-    // printf("nId = %d, clientId = %d\n", nId, IdTable[nId].clientId);
     struct sockaddr_in ca = IdTable[nId].clientAddr;
 
     IdTable[nId].expireTime = 0; // 响应完毕后立即过期
@@ -764,9 +783,13 @@ void receiveFromPublic()
         struct ResourceRecord *rr = msg.answers;
         while (rr)
         {
-            char *domain_name = rr->name;
-            uint8_t *addr = rr->rd_data.a_record.addr;
-            updateCache(addr, domain_name);
+            if (rr->type == A_Resource_RecordType) {
+                char *domain_name = rr->name;
+                uint8_t *addr = rr->rd_data.a_record.addr;
+                updateCache(addr, domain_name);
+                if (DEBUG)
+                    printCache();
+            }
             rr = rr->next;
         }
     }
@@ -778,12 +801,64 @@ void receiveFromPublic()
         free_resource_records(msg.answers);
 }
 
-#define SELECT_MODE 1
-#define NONBLOCK_MODE 2
+void printInfo()
+{
+    printf("\n\
+███╗   ███╗██╗███╗   ██╗██╗      ██████╗ ███╗   ██╗███████╗\n\
+████╗ ████║██║████╗  ██║██║      ██╔══██╗████╗  ██║██╔════╝\n\
+██╔████╔██║██║██╔██╗ ██║██║█████╗██║  ██║██╔██╗ ██║███████╗\n\
+██║╚██╔╝██║██║██║╚██╗██║██║╚════╝██║  ██║██║╚██╗██║╚════██║\n\
+██║ ╚═╝ ██║██║██║ ╚████║██║      ██████╔╝██║ ╚████║███████║\n\
+╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝      ╚═════╝ ╚═╝  ╚═══╝╚══════╝\n\
+                                                           \n");
+    printf("MINI-DNS 2.0 LTS\n");
+    printf("@Auther: Gou Zhibin, Liu Jun\n");
+    printf("@Teacher: Wu Qifan\n");
+    printf("@Version: 2.0\n");
+    printf("@Copyright: BUPT\n");
+    printf("@Description: A simple DNS server, course design of computer network\n");
+    printf("@Usage: minidns [-d] [-h] [-l] [-p <port>] [-f <db-file>] [-s <dns-server>]\n");
+    printf("---------------------------------------------------------------------------\n");
+}
+
 int main(int argc, char *argv[])
 {
-    // int mode = SELECT_MODE;
-    int mode = NONBLOCK_MODE;
+    printInfo();
+    // 解析参数
+    int o;
+    const char *optstring = "dhlf:p:s:"; // 有三个选项-abc，其中c选项后有冒号，所以后面必须有参数
+    while ((o = getopt(argc, argv, optstring)) != -1) {
+        switch (o) {
+            case 'd':
+                DEBUG = true;
+                printf("DEBUG is on.\n");
+                break;
+            case 'l':
+                LOG = true;
+                printf("LOG is on.\n");
+                break;
+            case 'f':
+                strcpy(DNS_TABLE_FILE, optarg);
+                break;
+            case 'p':
+                PORT = atoi(optarg);
+                break;
+            case 's':
+                strcpy(PUBLIC_DNS_IP, optarg);
+                break;
+            case 'h':
+            default:
+                printf("Usage:  dnsrelay [-d] [-h] [-l] [-p <port>] [-f <db-file>] [-s <dns-server>]\n");
+                printf("Where:  -d                     (print debug information)\n");
+                printf("        -h                     (print help)\n");
+                printf("        -l                     (print log)\n");
+                printf("        -f db-file             (specify DNS table file)\n");
+                printf("        -p port                (specify port number)\n");
+                printf("        -s dns-server          (specify DNS server)\n");
+                return 0;
+        }
+    }
+
     // 初始化字典树
     cacheTrie = (struct Trie *)malloc(sizeof(struct Trie));
     tableTrie = (struct Trie *)malloc(sizeof(struct Trie));
@@ -795,15 +870,13 @@ int main(int argc, char *argv[])
     char domain[maxStr] = {0};
     char ipAddr[maxStr] = {0};
 
-    printf("main1");
     FILE *fp = NULL;
-    if ((fp = fopen("./dnsrelay.txt", "r")) == NULL)
+    if ((fp = fopen(DNS_TABLE_FILE, "r")) == NULL)
     {
-        printf("找不到dnsrelay.txt");
+        printf("ERROR: Can't find file '%s'\n", DNS_TABLE_FILE);
         return -1;
     }
     unsigned char ip[4];
-    printf("main2");
     while (!feof(fp))
     {
         fscanf(fp, "%s", ipAddr);
@@ -812,7 +885,6 @@ int main(int argc, char *argv[])
         //printf("%d:%s  %s\n",cnt,name,ipAddr);
         insertNode(tableTrie, domain, ip);
     }
-    printf("main3");
 
     // LRU算法初始化
     head = (struct Node *)malloc(sizeof(struct Node));
@@ -851,13 +923,13 @@ int main(int argc, char *argv[])
 
     if (bind(clientSock, (SOCKADDR *)&clientAddr, addr_len) < 0)
     {
-        printf("Could not bind: %s\n", strerror(errno));
+        printf("ERROR: Could not bind: %s\n", strerror(errno));
         return 1;
     }
+    printf("DNS server: %s\n", PUBLIC_DNS_IP);
+    printf("Listening on port %u\n", PORT);
 
-    printf("Listening on port %u.\n", PORT);
-
-    if(mode == NONBLOCK_MODE)
+    if(MODE == NONBLOCK_MODE)
     {
         int nonBlock = 1;
         ioctlsocket(clientSock, FIONBIO, (u_long FAR *)&nonBlock);
@@ -868,7 +940,7 @@ int main(int argc, char *argv[])
             receiveFromPublic();
         }
     }
-    else if(mode == SELECT_MODE)
+    else if(MODE == SELECT_MODE)
     {
         fd_set fdread;
         while (1)
@@ -882,24 +954,19 @@ int main(int argc, char *argv[])
             int ret = select(0, &fdread, NULL, NULL, &tv);
             if (SOCKET_ERROR == ret)
             {
-                printf("select error:%d.\n", WSAGetLastError());
+                printf("ERROR SELECT:%d.\n", WSAGetLastError());
             }
             if (ret > 0)
             {
                 if (FD_ISSET(clientSock, &fdread))
                 {
-                    printf("local pre\n");
                     receiveFromLocal();
-                    printf("local later\n");
                 }
                 if (FD_ISSET(serverSock, &fdread))
                 {
-                    printf("public pre\n");
                     receiveFromPublic();
-                    printf("public later\n");
                 }
             }
-            //printf("SELECT\n");
         }
     }
 

@@ -11,17 +11,26 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <getopt.h>
 #include <WinSock2.h>
 #include <windows.h>
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
-#define PORT 53
 #define BUF_SIZE 1500
-// #define CACHE_SIZE 100
 #define ID_TABLE_SIZE 128
 #define ID_EXPIRE_TIME 4 // 5s
+#define SELECT_MODE 1
+#define NONBLOCK_MODE 2
+#define MODE 2
 
-const char PUBLIC_DNS_IP[] = "10.3.9.4";
+char PUBLIC_DNS_IP[16] = "10.3.9.4";
+char DNS_TABLE_FILE[100] = "./dnsrelay.txt";
+int PORT = 53;
+bool DEBUG = true;
+bool LOG = true;
+int requstCount = 0;
+
+
 int addr_len = sizeof(struct sockaddr_in);
 
 SOCKET clientSock;

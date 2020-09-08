@@ -11,6 +11,7 @@
 #define maxStr 1001
 
 #define maxCacheSize 100
+
 struct Trie{
     int tree[maxn][maxm];       //字典树
     int pre[maxn];              //记录父亲节点
