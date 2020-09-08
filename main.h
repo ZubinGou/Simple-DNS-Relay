@@ -17,7 +17,7 @@
 
 #define PORT 53
 #define BUF_SIZE 1500
-#define CACHE_SIZE 100
+// #define CACHE_SIZE 100
 #define ID_TABLE_SIZE 128
 #define ID_EXPIRE_TIME 4 // 5s
 
