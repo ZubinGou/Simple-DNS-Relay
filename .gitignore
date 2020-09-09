@@ -2,9 +2,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/c,visualstudio
 # Edit at https://www.toptal.com/developers/gitignore?templates=c,visualstudio
 
-## temp
+## user
 temp*
-
+.idea
 
 ### C ###
 # Prerequisites
