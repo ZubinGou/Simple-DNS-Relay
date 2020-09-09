@@ -1,7 +1,3 @@
-// #include <arpa/inet.h>
-// #include <sys/socket.h>
-// #include <netdb.h>
-// #include <ifaddrs.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,9 +7,11 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <getopt.h>
 #include <WinSock2.h>
 #include <windows.h>
+#include <getopt.h>
+#include "trie.h"
+
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #define BUF_SIZE 1500
@@ -23,25 +21,23 @@
 #define NONBLOCK_MODE 2
 #define MODE 1
 
-char PUBLIC_DNS_IP[16] = "10.3.9.4";
+char PUBLIC_DNS_IP[16] = "10.3.9.4"; // 北邮DNS服务器，用校园网时因AP隔离两台主机无法通信
+// char PUBLIC_DNS_IP[16] = "192.168.43.1"; // 手机热点
 char DNS_TABLE_FILE[100] = "./dnsrelay.txt";
 int PORT = 53;
 bool DEBUG = false;
 bool LOG = true;
-int requstCount = 0;
 
-
-int addr_len = sizeof(struct sockaddr_in);
-
+// communication
+WSADATA wsaData;
 SOCKET clientSock;
 SOCKET serverSock;
 struct sockaddr_in clientAddr;
 struct sockaddr_in serverAddr;
+int addr_len = sizeof(struct sockaddr_in);
+int requstCount = 0;
 
-/*
-* Masks and constants.
-*/
-
+// Masks and constants.
 static const uint32_t QR_MASK = 0x8000;
 static const uint32_t OPCODE_MASK = 0x7800;
 static const uint32_t AA_MASK = 0x0400;
@@ -50,7 +46,7 @@ static const uint32_t RD_MASK = 0x0100;
 static const uint32_t RA_MASK = 0x8000;
 static const uint32_t RCODE_MASK = 0x000F;
 
-/* Response Type */
+// Response Type
 enum
 {
     Ok_ResponseType = 0,
@@ -61,7 +57,7 @@ enum
     Refused_ResponseType = 5
 };
 
-/* Resource Record Types */
+// Resource Record Types
 enum
 {
     A_Resource_RecordType = 1,
@@ -75,17 +71,17 @@ enum
     SRV_Resource_RecordType = 33
 };
 
-/* Operation Code */
+// Operation Code
 enum
 {
-    QUERY_OperationCode = 0,  /* standard query */
-    IQUERY_OperationCode = 1, /* inverse query */
-    STATUS_OperationCode = 2, /* server status request */
-    NOTIFY_OperationCode = 4, /* request zone transfer */
-    UPDATE_OperationCode = 5  /* change resource records */
+    QUERY_OperationCode = 0,  // standard query 
+    IQUERY_OperationCode = 1, // inverse query 
+    STATUS_OperationCode = 2, // server status request 
+    NOTIFY_OperationCode = 4, // request zone transfer 
+    UPDATE_OperationCode = 5  // change resource records 
 };
 
-/* Response Code */
+// Response Code
 enum
 {
     NoError_ResponseCode = 0,
@@ -94,7 +90,7 @@ enum
     NameError_ResponseCode = 3
 };
 
-/* Query Type */
+// Query Type
 enum
 {
     IXFR_QueryType = 251,
@@ -104,11 +100,7 @@ enum
     STAR_QueryType = 255
 };
 
-/*
-* Types.
-*/
-
-/* Question Section */
+// Question Section 
 struct Question
 {
     char *qName;
@@ -117,7 +109,7 @@ struct Question
     struct Question *next; // for linked list
 };
 
-/* Data part of a Resource Record */
+// Data part of a Resource Record 
 union ResourceData
 {
     struct
@@ -166,11 +158,30 @@ union ResourceData
         uint16_t weight;
         uint16_t port;
         char *target;
-    } srv_record;
+    } srv_record; // rfc2782
 };
 
-// Resource Record Section
-// Answer、Authority、Additional部分
+// Resource Record Section for Answer、Authority、Additional
+//                                 1  1  1  1  1  1
+//   0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |                                               |
+// /                                               /
+// /                      NAME                     /
+// |                                               |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |                      TYPE                     |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |                     CLASS                     |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |                      TTL                      |
+// |                                               |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |                   RDLENGTH                    |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--|
+// /                     RDATA                     /
+// /                                               /
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
 struct ResourceRecord
 {
     char *name;
@@ -182,32 +193,58 @@ struct ResourceRecord
     struct ResourceRecord *next; // for linked list
 };
 
+// Messages
+// +---------------------+
+// |        Header       |
+// +---------------------+
+// |       Question      | the question for the name server
+// +---------------------+
+// |        Answer       | RRs answering the question
+// +---------------------+
+// |      Authority      | RRs pointing toward an authority
+// +---------------------+
+// |      Additional     | RRs holding additional information
+// +---------------------+
+
+// Header
+//                                 1  1  1  1  1  1
+//   0  1  2  3  4  5  6  7  8  9  0  1  2  3  4  5
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |                      ID                       |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |QR|   Opcode  |AA|TC|RD|RA|   Z    |   RCODE   |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |                    QDCOUNT                    |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |                    ANCOUNT                    |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |                    NSCOUNT                    |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
+// |                    ARCOUNT                    |
+// +--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
 struct Message
 {
-    uint16_t id; /* Identifier */
+    uint16_t id; // Identifier 
+    // Flags 
+    uint16_t qr;     // Query/Response Flag 
+    uint16_t opcode; // Operation Code 
+    uint16_t aa;     // Authoritative Answer Flag 
+    uint16_t tc;     // Truncation Flag 
+    uint16_t rd;     // Recursion Desired 
+    uint16_t ra;     // Recursion Available 
+    uint16_t rcode;  // Response Code 
 
-    /* Flags */
-    uint16_t qr;     /* Query/Response Flag */
-    uint16_t opcode; /* Operation Code */
-    uint16_t aa;     /* Authoritative Answer Flag */
-    uint16_t tc;     /* Truncation Flag */
-    uint16_t rd;     /* Recursion Desired */
-    uint16_t ra;     /* Recursion Available */
-    uint16_t rcode;  /* Response Code */
+    uint16_t qdCount; // Question Count 
+    uint16_t anCount; // Answer Record Count 
+    uint16_t nsCount; // Authority Record Count 
+    uint16_t arCount; // Additional Record Count 
 
-    uint16_t qdCount; /* Question Count */
-    uint16_t anCount; /* Answer Record Count */
-    uint16_t nsCount; /* Authority Record Count */
-    uint16_t arCount; /* Additional Record Count */
-
-    /* At least one question; questions are copied to the response 1:1 */
+    // At least one question; questions are copied to the response 1:1 
     struct Question *questions;
 
-    /*
-  * Resource records to be send back.
-  * Every resource record can be in any of the following places.
-  * But every place has a different semantic.
-  */
+    // Resource records to be send back.
+    // Every resource record can be in any of the following places.
+    // But every place has a different semantic.
     struct ResourceRecord *answers;
     struct ResourceRecord *authorities;
     struct ResourceRecord *additionals;
@@ -215,8 +252,8 @@ struct Message
 
 typedef struct {
     uint16_t clientId;
-    int expireTime; // 传输完也将expireTime设为0
+    int expireTime; // time IdConversion expired
     struct sockaddr_in clientAddr;
 } IdConversion;
 
-IdConversion IdTable[ID_TABLE_SIZE]; // ID转换表
+IdConversion IdTable[ID_TABLE_SIZE]; // ID conversion table

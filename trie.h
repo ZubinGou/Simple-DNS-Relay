@@ -1,5 +1,5 @@
-#ifndef HASH_H
-#define HASH_H
+#ifndef TRIE_H
+#define TRIE_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,4 +34,4 @@ void insertNode(struct Trie* trie , const char* str ,unsigned char ip[4]);
 void deleteNode(struct Trie* trie ,char* str);
 int findNode(struct Trie* trie ,const char* str);
 void transIp(unsigned char ip[4] , char *rowIp);
-#endif // HASH_H
+#endif // TRIE_H
