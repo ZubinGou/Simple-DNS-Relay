@@ -11,9 +11,10 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <getopt.h>
 #include <WinSock2.h>
 #include <windows.h>
+#include <getopt.h>
+#include "storage.h"
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #define BUF_SIZE 1500
@@ -23,7 +24,9 @@
 #define NONBLOCK_MODE 2
 #define MODE 1
 
-char PUBLIC_DNS_IP[16] = "10.3.9.4";
+// char PUBLIC_DNS_IP[16] = "10.3.9.4";
+char PUBLIC_DNS_IP[16] = "192.168.43.1";
+
 char DNS_TABLE_FILE[100] = "./dnsrelay.txt";
 int PORT = 53;
 bool DEBUG = false;

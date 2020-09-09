@@ -6,7 +6,7 @@
 // @Description : main file of Mini-Dns
 //============================================================================
 #include "main.h"
-#include "storage.h"
+
 
 int get_A_Record(uint8_t addr[4], const char domain_name[])
 {
@@ -142,10 +142,8 @@ void print_resource_record(struct ResourceRecord *rr)
             break;
         case AAAA_Resource_RecordType:
             printf("AAAA Resource Record { address ");
-
             for (i = 0; i < 16; ++i)
                 printf("%s%02x", (i ? ":" : ""), rd->aaaa_record.addr[i]);
-
             printf(" }");
             break;
         default:
@@ -240,7 +238,7 @@ void put32bits(uint8_t **buffer, uint32_t value)
 */
 char *decode_domain_name(const uint8_t **buffer, int offset)
 {
-    // printf("decode_domain_name:\n");
+    // offset buffer相对开始位置的偏移量
     // print_hex(*buffer, 50);
 
     char name[256];
@@ -248,14 +246,15 @@ char *decode_domain_name(const uint8_t **buffer, int offset)
     int i = 0;
     int j = 0;
 
-    if (buf[0] == 0xc0)
+    if (buf[0] >= 0xc0)
     { // 1. 指针类型
-        const uint8_t *nameAddr = *buffer - offset + buf[1];
+        int newOffset = ((int)buf[0] & 0x3f) << 8 + buf[1];
+        const uint8_t *nameAddr = *buffer - offset + newOffset;
         *buffer += 2;
-        return decode_domain_name(&nameAddr, buf[1]);
+        return decode_domain_name(&nameAddr, newOffset);
     }
 
-    while (buf[i] != 0 && buf[i] != 0xc0)
+    while (buf[i] != 0 && buf[i] < 0xc0)
     { // 地址部分
         if (i != 0)
         {
@@ -269,38 +268,32 @@ char *decode_domain_name(const uint8_t **buffer, int offset)
         i += len;
         j += len;
     }
+
     if (buf[i] == 0x00)
     { // 2. 纯地址类型
         i++;
     }
-    else if (buf[i] == 0xc0)
+    else if (buf[i] >= 0xc0)
     { // 3. 地址 + 指针
         i++;
-        buf = *buffer - offset + buf[i]; // 指针指向地址
-        int k = 0;
-        while (buf[k] != 0)
-        { // 数字部分
-            name[j] = '.';
-            j++;
-            int len = buf[k];
-            k++;
-
-            memcpy(name + j, buf + k, len);
-            k += len;
-            j += len;
-        }
+        int newOffset = ((int)buf[i-1] & 0x3f) << 8 + buf[i];
+        buf = *buffer - offset + newOffset; // 指针指向地址
+        char *nameRemain = decode_domain_name(&buf, newOffset);
+        memcpy(name + j, nameRemain, strlen(nameRemain));
+        j += strlen(nameRemain);
         i++;
     }
     else
     {
         printf("ERROR: decode_domain_name\n");
     }
+
     *buffer += i;
     name[j] = '\0';
     return strdup(name);
 }
 
-// foo.bar.com => 3foo3bar3com0
+// 域名编码为字符计数法表示
 void encode_domain_name(uint8_t **buffer, const char *domain)
 {
     uint8_t *buf = *buffer;
@@ -395,9 +388,50 @@ int decode_resource_records(struct ResourceRecord *rr, const uint8_t **buffer, c
         break;
     case CNAME_Resource_RecordType:
         rr->rd_data.cname_record.name = decode_domain_name(buffer, *buffer - oriBuffer);
+        break;
+    case PTR_Resource_RecordType:
+        rr->rd_data.ptr_record.name = decode_domain_name(buffer, *buffer - oriBuffer);
+        break;
     default:
         fprintf(stderr, "ERROR @decode_resource_records: Unknown type %u. => Ignore resource record.\n", rr->type);
         return -1;
+    }
+    return 0;
+}
+
+int encode_resource_records(struct ResourceRecord *rr, uint8_t **buffer)
+{
+    int i;
+    while (rr)
+    {
+        // Answer questions by attaching resource sections.
+        encode_domain_name(buffer, rr->name);
+        put16bits(buffer, rr->type);
+        put16bits(buffer, rr->class);
+        put32bits(buffer, rr->ttl);
+        put16bits(buffer, rr->rd_length);
+
+        switch (rr->type)
+        {
+        case A_Resource_RecordType:
+            for (i = 0; i < 4; ++i)
+                put8bits(buffer, rr->rd_data.a_record.addr[i]);
+            break;
+        case AAAA_Resource_RecordType:
+            for (i = 0; i < 16; ++i)
+                put8bits(buffer, rr->rd_data.aaaa_record.addr[i]);
+            break;
+        case TXT_Resource_RecordType:
+            put8bits(buffer, rr->rd_data.txt_record.txt_data_len);
+            for (i = 0; i < rr->rd_data.txt_record.txt_data_len; i++)
+                put8bits(buffer, rr->rd_data.txt_record.txt_data[i]);
+            break;
+        default:
+            fprintf(stderr, "ERROR @encode_resource_records: Unknown type %u. => Ignore resource record.\n", rr->type);
+            return 1;
+        }
+
+        rr = rr->next;
     }
     return 0;
 }
@@ -408,9 +442,7 @@ int decode_msg(struct Message *msg, const uint8_t *buffer, int size)
 
     decode_header(msg, &buffer);
 
-    // printf("decode header: ");
     // print_hex(buffer, 200);
-
     // 解析Question
     for (uint16_t i = 0; i < msg->qdCount; ++i)
     {
@@ -461,6 +493,29 @@ int decode_msg(struct Message *msg, const uint8_t *buffer, int size)
     return 0;
 }
 
+/* @return 0 upon failure, 1 upon success */
+int encode_msg(struct Message *msg, uint8_t **buffer)
+{
+    struct Question *q;
+    int rc;
+
+    encode_header(msg, buffer);
+    q = msg->questions;
+    while (q) // 解析所有的question
+    {
+        encode_domain_name(buffer, q->qName);
+        put16bits(buffer, q->qType);
+        put16bits(buffer, q->qClass);
+
+        q = q->next;
+    }
+    rc = 0;
+    rc |= encode_resource_records(msg->answers, buffer);
+    rc |= encode_resource_records(msg->authorities, buffer);
+    rc |= encode_resource_records(msg->additionals, buffer);
+    return rc;
+}
+
 // For every question in the message add a appropiate resource record
 // in either section 'answers', 'authorities' or 'additionals'.
 // 返回-1代表本地找不到，1表示屏蔽，0表示本地找到
@@ -474,7 +529,7 @@ int resolver_process(struct Message *msg)
     // leave most values intact for response
     msg->qr = 1; // this is a response
     msg->aa = 1; // this server is authoritative
-    msg->ra = 0; // no recursion available
+    msg->ra = 1; // no recursion available TODO
     msg->rcode = Ok_ResponseType;
 
     // should already be 0
@@ -537,8 +592,8 @@ int resolver_process(struct Message *msg)
 
         default:
             rc = -1;
-            msg->rcode = NotImplemented_ResponseType;
-            printf("Cannot answer question of type %d.\n", q->qType);
+            // msg->rcode = NotImplemented_ResponseType;
+            // printf("Cannot answer question of type %d.\n", q->qType);
         }
 
         if (rc == 0)
@@ -556,66 +611,6 @@ int resolver_process(struct Message *msg)
         q = q->next; // 多个Question的情况
     }
     return 0;
-}
-
-int encode_resource_records(struct ResourceRecord *rr, uint8_t **buffer)
-{
-    int i;
-    while (rr)
-    {
-        // Answer questions by attaching resource sections.
-        encode_domain_name(buffer, rr->name);
-        put16bits(buffer, rr->type);
-        put16bits(buffer, rr->class);
-        put32bits(buffer, rr->ttl);
-        put16bits(buffer, rr->rd_length);
-
-        switch (rr->type)
-        {
-        case A_Resource_RecordType:
-            for (i = 0; i < 4; ++i)
-                put8bits(buffer, rr->rd_data.a_record.addr[i]);
-            break;
-        case AAAA_Resource_RecordType:
-            for (i = 0; i < 16; ++i)
-                put8bits(buffer, rr->rd_data.aaaa_record.addr[i]);
-            break;
-        case TXT_Resource_RecordType:
-            put8bits(buffer, rr->rd_data.txt_record.txt_data_len);
-            for (i = 0; i < rr->rd_data.txt_record.txt_data_len; i++)
-                put8bits(buffer, rr->rd_data.txt_record.txt_data[i]);
-            break;
-        default:
-            fprintf(stderr, "ERROR @encode_resource_records: Unknown type %u. => Ignore resource record.\n", rr->type);
-            return 1;
-        }
-
-        rr = rr->next;
-    }
-    return 0;
-}
-
-/* @return 0 upon failure, 1 upon success */
-int encode_msg(struct Message *msg, uint8_t **buffer)
-{
-    struct Question *q;
-    int rc;
-
-    encode_header(msg, buffer);
-    q = msg->questions;
-    while (q) // 解析所有的question
-    {
-        encode_domain_name(buffer, q->qName);
-        put16bits(buffer, q->qType);
-        put16bits(buffer, q->qClass);
-
-        q = q->next;
-    }
-    rc = 0;
-    rc |= encode_resource_records(msg->answers, buffer);
-    rc |= encode_resource_records(msg->authorities, buffer);
-    rc |= encode_resource_records(msg->additionals, buffer);
-    return rc;
 }
 
 /* ID转换部分 */
@@ -691,7 +686,7 @@ void receiveFromLocal()
         printf("@%3d:  ", requstCount++);
         printf ("%d-%02d-%02d ", (1900+p->tm_year), (1+p->tm_mon), p->tm_mday);
         printf("%02d:%02d:%02d  ", p->tm_hour, p->tm_min, p->tm_sec);
-        printf("Client %15s:%-5d   ", inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
+        printf("Client %15s : %-5d   ", inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
         printf("%s\n", msg.questions->qName);
     }
     if (DEBUG) {
@@ -740,6 +735,7 @@ void receiveFromLocal()
         free_questions(msg.questions);
     if (msg.anCount)
         free_resource_records(msg.answers);
+    // printf("free done\n");
     // free_resource_records(msg.authorities);
     // free_resource_records(msg.additionals);
 }
@@ -768,7 +764,7 @@ void receiveFromPublic()
         printf("@%3d:  ", requstCount++);
         printf ("%d-%02d-%02d ", (1900+p->tm_year), (1+p->tm_mon), p->tm_mday);
         printf("%02d:%02d:%02d  ", p->tm_hour, p->tm_min, p->tm_sec);
-        printf("Server %15s:%-5d   ", inet_ntoa(serverAddr.sin_addr), ntohs(serverAddr.sin_port));
+        printf("Server %15s : %-5d   ", inet_ntoa(serverAddr.sin_addr), ntohs(serverAddr.sin_port));
         printf("%s\n", msg.questions->qName);
     }
     if (DEBUG) {
@@ -785,7 +781,7 @@ void receiveFromPublic()
     
     IdTable[nId].expireTime = 0; // 响应完毕后立即过期
     if (DEBUG) {
-        printf("<<< SEND to Client %s:%d ", inet_ntoa(serverAddr.sin_addr), ntohs(serverAddr.sin_port));
+        printf("<<< SEND to Client %s:%d ", inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
         printf("(%d bytes) [ID %x=>%x]\n", nbytes, nId, ntohs(clientId));
     }
     sendto(clientSock, buffer, nbytes, 0, (struct sockaddr *)&ca, sizeof(ca));
@@ -800,8 +796,8 @@ void receiveFromPublic()
                 char *domain_name = rr->name;
                 uint8_t *addr = rr->rd_data.a_record.addr;
                 updateCache(addr, domain_name);
-                if (DEBUG)
-                    printCache();
+                // if (DEBUG)
+                //     printCache();
             }
             rr = rr->next;
         }
@@ -963,7 +959,7 @@ int main(int argc, char *argv[])
             FD_SET(serverSock, &fdread);
             TIMEVAL tv;//设置超时等待时间
             tv.tv_sec = 0;
-            tv.tv_usec = 10;
+            tv.tv_usec = 1;
             int ret = select(0, &fdread, NULL, NULL, &tv);
             if (SOCKET_ERROR == ret)
             {
